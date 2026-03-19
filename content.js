@@ -118,7 +118,6 @@ const createWidget = () => {
     let widget = document.getElementById('tablah-widget');
     if (widget) {
         clearWidgetState(widget);
-        showQuickScore(widget);
         return;
     }
 
@@ -177,9 +176,6 @@ const createWidget = () => {
     };
 
     document.body.appendChild(widget);
-
-    // Auto-analyze if token present
-    showQuickScore(widget);
 };
 
 const showOverlay = (assessment) => {
@@ -252,7 +248,7 @@ const showOverlay = (assessment) => {
             const cleaned_description = assessment.job_description || raw_text;
             const job_hash = await generateHash(cleaned_description + window.location.href);
             
-            await apiFetch(`${API_BASE}/jobs`, {
+            const response = await apiFetch(`${API_BASE}/jobs`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -271,8 +267,11 @@ const showOverlay = (assessment) => {
                 })
             });
             
-            btn.innerText = 'Imported!';
+            btn.innerText = 'View in Tablah';
             btn.style.backgroundColor = '#22c55e';
+            btn.disabled = false;
+            const dashboardUrl = `${CONFIG.APP_URL}/en/dashboard/candidate/jobs#job-${response.id}`;
+            btn.onclick = () => window.open(dashboardUrl, '_blank');
         } catch (err) {
             btn.innerText = 'Error';
             btn.disabled = false;

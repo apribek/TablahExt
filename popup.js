@@ -151,9 +151,7 @@ const importJob = async () => {
     try {
         // No need to re-parse, we have currentAssessment
         const description = currentAssessment?.job_description || jobData.description;
-        const job_hash = await generateHash(description + (jobData.link || ""));
-        
-        await apiFetch(`${API_BASE}/jobs`, {
+        const response = await apiFetch(`${API_BASE}/jobs`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -172,10 +170,14 @@ const importJob = async () => {
             })
         });
 
-        btn.innerText = "Imported!";
+        btn.innerText = "View in Tablah";
         btn.classList.replace('btn-outline', 'btn-primary');
         btn.style.backgroundColor = 'var(--success)';
         btn.style.border = 'none';
+        btn.disabled = false;
+        
+        const dashboardUrl = `${CONFIG.APP_URL}/en/dashboard/candidate/jobs#job-${response.id}`;
+        btn.onclick = () => chrome.tabs.create({ url: dashboardUrl });
         
     } catch (e) {
         showError(e.message);
@@ -235,10 +237,11 @@ document.getElementById('btn-login').addEventListener('click', () => {
         showView('main');
         await scrapeJob();
         
-        // Auto-trigger assessment if we have job data
+        /* Auto-trigger assessment if we have job data - DISABLED as per user request
         if (jobData && jobData.description) {
             assessJob();
         }
+        */
     }
 })();
 
