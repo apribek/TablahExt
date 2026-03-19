@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>TablahExt</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #38bdf8;
+            --success: #22c55e;
+            --warning: #f59e0b;
+        }
+
+        body {
+            width: 760px;
+            max-height: 580px;
+            margin: 0;
+            padding: 24px;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', -apple-system, sans-serif;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .header img {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+        }
+
+        .header h1 {
+            font-size: 1.25rem;
+            margin: 0;
+            font-weight: 700;
+            background: linear-gradient(to right, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.2s;
+        }
+
+        .job-info h2 {
+            font-size: 1.1rem;
+            margin: 0 0 4px 0;
+            color: var(--text);
+        }
+
+        .job-info p {
+            font-size: 0.9rem;
+            margin: 0;
+            color: var(--text-muted);
+        }
+
+        .score-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            margin: 20px 0;
+            position: relative;
+        }
+
+        .score-ring {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: 6px solid #334155;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--accent);
+            position: relative;
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
+        }
+
+        .score-label {
+            margin-top: 8px;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+        }
+
+        .actions {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: none;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-outline {
+            background-color: transparent;
+            border: 1px solid var(--primary);
+            color: var(--primary);
+        }
+
+        .btn-outline:hover {
+            background-color: rgba(37, 99, 235, 0.1);
+        }
+
+        .assessment-details {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .detail-section {
+            margin-bottom: 12px;
+        }
+
+        .detail-section h3 {
+            font-size: 0.85rem;
+            color: var(--accent);
+            margin: 0 0 6px 0;
+            text-transform: uppercase;
+        }
+
+        .detail-section p {
+            font-size: 0.85rem;
+            margin: 0;
+            line-height: 1.5;
+            color: var(--text-muted);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+
+        .spinner {
+            width: 30px;
+            height: 30px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 12px auto;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #error {
+            color: #ef4444;
+            font-size: 0.85rem;
+            margin-bottom: 12px;
+            display: none;
+            padding: 8px;
+            background: rgba(239, 68, 68, 0.1);
+            border-radius: 6px;
+        }
+
+        .auth-required {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="icons/icon48.png" alt="Tablah Logo">
+        <h1>Tablah AI</h1>
+    </div>
+
+    <div id="error"></div>
+
+    <div id="auth-view" class="auth-required">
+        <p>Please log in to your Tablah account to use the extension.</p>
+        <button class="btn-primary" id="btn-login">Open Tablah</button>
+    </div>
+
+    <div id="main-view">
+        <div class="card job-info" id="job-info-card">
+            <h2 id="job-title">Job Title</h2>
+            <p id="job-company">Company Name</p>
+        </div>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Analyzing job fit...</p>
+        </div>
+
+        <div id="assessment-result" style="display: none;">
+            <div class="score-container">
+                <div class="score-ring" id="score-value">--</div>
+                <div class="score-label">Fit Score</div>
+            </div>
+
+            <div class="assessment-details" id="assessment-details">
+                <div class="detail-section">
+                    <h3>Strengths</h3>
+                    <p id="strengths-text"></p>
+                </div>
+                <div class="detail-section">
+                    <h3>Gap Analysis</h3>
+                    <p id="weaknesses-text"></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card settings" style="margin-top: 10px; padding: 12px; font-size: 0.85rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Show floating widget here</span>
+                <input type="checkbox" id="site-toggle" style="width: auto;">
+            </div>
+            <p id="site-host" style="margin: 4px 0 0 0; font-size: 0.75rem; color: var(--text-muted);"></p>
+        </div>
+
+        <div class="actions">
+            <button class="btn-primary" id="btn-assess">Analyze Fit</button>
+            <button class="btn-outline" id="btn-import">Import Job</button>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="popup.js"></script>
+</body>
+</html>
