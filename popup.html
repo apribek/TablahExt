@@ -28,20 +28,20 @@
             overflow-y: auto;
         }
 
-        .header {
+        .tablah-header {
             display: flex;
             align-items: center;
             gap: 12px;
             margin-bottom: 24px;
         }
 
-        .header img {
+        .tablah-header img {
             width: 32px;
             height: 32px;
             border-radius: 6px;
         }
 
-        .header h1 {
+        .tablah-header h1 {
             font-size: 1.25rem;
             margin: 0;
             font-weight: 700;
@@ -51,7 +51,7 @@
             -webkit-text-fill-color: transparent;
         }
 
-        .card {
+        .tablah-card {
             background-color: var(--card-bg);
             border-radius: 12px;
             padding: 16px;
@@ -60,19 +60,19 @@
             transition: transform 0.2s;
         }
 
-        .job-info h2 {
+        .tablah-job-info h2 {
             font-size: 1.1rem;
             margin: 0 0 4px 0;
             color: var(--text);
         }
 
-        .job-info p {
+        .tablah-job-info p {
             font-size: 0.9rem;
             margin: 0;
             color: var(--text-muted);
         }
 
-        .score-container {
+        .tablah-score-container {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -81,7 +81,7 @@
             position: relative;
         }
 
-        .score-ring {
+        .tablah-score-ring {
             width: 80px;
             height: 80px;
             border-radius: 50%;
@@ -96,7 +96,7 @@
             box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
         }
 
-        .score-label {
+        .tablah-score-label {
             margin-top: 8px;
             font-size: 0.8rem;
             text-transform: uppercase;
@@ -104,7 +104,7 @@
             color: var(--text-muted);
         }
 
-        .actions {
+        .tablah-actions {
             display: flex;
             flex-direction: column;
             gap: 10px;
@@ -125,70 +125,88 @@
             gap: 8px;
         }
 
-        .btn-primary {
+        .tablah-btn-primary {
             background-color: var(--primary);
             color: white;
         }
 
-        .btn-primary:hover {
+        .tablah-btn-primary:hover {
             background-color: var(--primary-hover);
             transform: translateY(-1px);
         }
 
-        .btn-outline {
+        .tablah-btn-outline {
             background-color: transparent;
             border: 1px solid var(--primary);
             color: var(--primary);
         }
 
-        .btn-outline:hover {
+        .tablah-btn-outline:hover {
             background-color: rgba(37, 99, 235, 0.1);
         }
 
-        .assessment-details {
+        .tablah-assessment-details {
             margin-top: 20px;
             display: none;
         }
 
-        .detail-section {
+        .tablah-detail-section {
             margin-bottom: 12px;
         }
 
-        .detail-section h3 {
+        .tablah-detail-section h3 {
             font-size: 0.85rem;
             color: var(--accent);
             margin: 0 0 6px 0;
             text-transform: uppercase;
         }
 
-        .detail-section p {
+        .tablah-detail-section p {
             font-size: 0.85rem;
             margin: 0;
             line-height: 1.5;
             color: var(--text-muted);
         }
 
-        .loading {
-            text-align: center;
-            padding: 20px;
+        .tablah-loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(8px);
             display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.3s;
         }
 
-        .spinner {
-            width: 30px;
-            height: 30px;
-            border: 3px solid rgba(255, 255, 255, 0.1);
-            border-top: 3px solid var(--accent);
+        .tablah-spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid var(--accent);
             border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 12px auto;
+            animation: tablah-spin 1s linear infinite;
+            margin-bottom: 16px;
+            filter: drop-shadow(0 0 10px var(--accent));
         }
 
-        @keyframes spin {
+        .tablah-loading-text {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text);
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+
+        @keyframes tablah-spin {
             to { transform: rotate(360deg); }
         }
 
-        #error {
+        #tablah-error {
             color: #ef4444;
             font-size: 0.85rem;
             margin-bottom: 12px;
@@ -198,7 +216,7 @@
             border-radius: 6px;
         }
 
-        .auth-required {
+        .tablah-auth-required {
             display: none;
             text-align: center;
             padding: 20px;
@@ -206,58 +224,59 @@
     </style>
 </head>
 <body>
-    <div class="header">
+    <div class="tablah-header">
         <img src="icons/icon48.png" alt="Tablah Logo">
         <h1>Tablah AI</h1>
     </div>
 
-    <div id="error"></div>
+    <div id="tablah-error"></div>
 
-    <div id="auth-view" class="auth-required">
+    <div id="tablah-auth-view" class="tablah-auth-required">
         <p>Please log in to your Tablah account to use the extension.</p>
-        <button class="btn-primary" id="btn-login">Open Tablah</button>
+        <button class="tablah-btn-primary" id="tablah-btn-login">Open Tablah</button>
     </div>
 
-    <div id="main-view">
-        <div class="card job-info" id="job-info-card">
-            <h2 id="job-title">Job Title</h2>
-            <p id="job-company">Company Name</p>
+    <div id="tablah-main-view">
+        <div class="tablah-card tablah-job-info" id="tablah-job-info-card">
+            <h2 id="tablah-job-title">Job Title</h2>
+            <p id="tablah-job-company">Company Name</p>
         </div>
 
-        <div id="loading" class="loading">
-            <div class="spinner"></div>
-            <p>Analyzing job fit...</p>
+        <div id="tablah-loading-overlay" class="tablah-loading-overlay">
+            <div class="tablah-spinner"></div>
+            <p id="tablah-loading-text" class="tablah-loading-text">Analyzing job fit...</p>
         </div>
 
-        <div id="assessment-result" style="display: none;">
-            <div class="score-container">
-                <div class="score-ring" id="score-value">--</div>
-                <div class="score-label">Fit Score</div>
+        <div id="tablah-assessment-result" style="display: none;">
+            <div class="tablah-score-container">
+                <div class="tablah-score-ring" id="tablah-score-value">--</div>
+                <div class="tablah-score-label">Fit Score</div>
             </div>
 
-            <div class="assessment-details" id="assessment-details">
-                <div class="detail-section">
+            <div class="tablah-assessment-details" id="tablah-assessment-details">
+                <div class="tablah-detail-section">
                     <h3>Strengths</h3>
-                    <p id="strengths-text"></p>
+                    <p id="tablah-strengths-text"></p>
                 </div>
-                <div class="detail-section">
+                <div class="tablah-detail-section">
                     <h3>Gap Analysis</h3>
-                    <p id="weaknesses-text"></p>
+                    <p id="tablah-weaknesses-text"></p>
                 </div>
             </div>
         </div>
 
-        <div class="card settings" style="margin-top: 10px; padding: 12px; font-size: 0.85rem;">
+        <div class="tablah-card tablah-settings" style="margin-top: 10px; padding: 12px; font-size: 0.85rem;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span>Show floating widget here</span>
-                <input type="checkbox" id="site-toggle" style="width: auto;">
+                <input type="checkbox" id="tablah-site-toggle" style="width: auto;">
             </div>
-            <p id="site-host" style="margin: 4px 0 0 0; font-size: 0.75rem; color: var(--text-muted);"></p>
+            <p id="tablah-site-host" style="margin: 4px 0 0 0; font-size: 0.75rem; color: var(--text-muted);"></p>
         </div>
 
-        <div class="actions">
-            <button class="btn-primary" id="btn-assess">Analyze Fit</button>
-            <button class="btn-outline" id="btn-import">Import Job</button>
+        <div class="tablah-actions">
+            <button class="tablah-btn-primary" id="tablah-btn-assess">Analyze Fit</button>
+            <button class="tablah-btn-outline" id="tablah-btn-import-profile">Import Experiences</button>
+            <button class="tablah-btn-outline" id="tablah-btn-import">Import Job</button>
         </div>
     </div>
 

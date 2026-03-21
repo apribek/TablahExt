@@ -13,6 +13,16 @@ let jobData = null;
 let authToken = null;
 let currentAssessment = null;
 
+const openAppTab = async (url) => {
+    const tabs = await chrome.tabs.query({ url: `${APP_URL}/*` });
+    if (tabs.length > 0) {
+        await chrome.tabs.update(tabs[0].id, { url, active: true });
+        await chrome.windows.update(tabs[0].windowId, { focused: true });
+    } else {
+        await chrome.tabs.create({ url });
+    }
+};
+
 const checkAuth = async () => {
     // Try to get token from storage first
     const data = await chrome.storage.local.get(['clerk_token']);
@@ -23,12 +33,10 @@ const checkAuth = async () => {
 
     // In a real scenario, we'd look for the cookie from the main app's domain
     try {
-        const cookies = await chrome.cookies.getAll({ domain: "localhost" });
+        const cookies = await chrome.cookies.getAll({ domain: CONFIG.COOKIE_DOMAIN });
         const sessionCookie = cookies.find(c => c.name.startsWith('__client_unv_')); // Clerk cookie pattern
         if (sessionCookie) {
             // Simplified for scratch/demo: If we have the cookie, we consider it authenticated
-            // In a real app, we'd exchange session for a JWT token
-            // For now, let's suggest the user log in if the token is not explicit
         }
     } catch (e) {
         console.error("Cookie access error:", e);
@@ -38,31 +46,56 @@ const checkAuth = async () => {
 };
 
 const showView = (viewId) => {
-    document.getElementById('main-view').style.display = viewId === 'main' ? 'block' : 'none';
-    document.getElementById('auth-view').style.display = viewId === 'auth' ? 'block' : 'none';
+    document.getElementById('tablah-main-view').style.display = viewId === 'main' ? 'block' : 'none';
+    document.getElementById('tablah-auth-view').style.display = viewId === 'auth' ? 'block' : 'none';
 };
 
 const showError = (msg) => {
-    const errorEl = document.getElementById('error');
+    const errorEl = document.getElementById('tablah-error');
     errorEl.innerText = msg;
     errorEl.style.display = 'block';
     setTimeout(() => { errorEl.style.display = 'none'; }, 5000);
 };
 
-const scrapeJob = async () => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab) return;
+const genericScrape = async (btn, useContext = true) => {
+    if (btn.disabled) return null;
+    
+    const originalText = btn.innerText;
+    btn.disabled = true;
+    btn.innerText = "Scraping...";
 
     try {
-        const response = await chrome.tabs.sendMessage(tab.id, { action: "scrapeJob" });
-        if (response) {
-            jobData = response;
-            document.getElementById('job-title').innerText = "Scanning page...";
-            document.getElementById('job-company').innerText = "Detecting job details...";
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab) throw new Error("No active tab found");
+
+        const response = await chrome.tabs.sendMessage(tab.id, { action: "scrape", useContext });
+        
+        if (response && response.status === "redirecting") {
+            setLoadingState(true, "Navigating to full profile...");
+            window.close(); // Close popup as the page is navigating
+            return null;
         }
+
+        if (!response || !response.text) {
+            btn.innerText = "Select text & retry";
+            btn.disabled = false;
+            
+            // Highlight feedback
+            const originalColor = btn.style.backgroundColor;
+            btn.style.backgroundColor = '#475569';
+            setTimeout(() => {
+                btn.style.backgroundColor = originalColor;
+                if (btn.innerText === "Select text & retry") btn.innerText = originalText;
+            }, 3000);
+            return null;
+        }
+        return response;
     } catch (e) {
         console.error("Scraping error:", e);
-        showError("Could not read job details. Are you on a job page?");
+        showError("Could not read page content. Try selecting text manually.");
+        btn.disabled = false;
+        btn.innerText = originalText;
+        return null;
     }
 };
 
@@ -82,21 +115,34 @@ const apiFetch = async (url, options) => {
     });
 };
 
+const setLoadingState = (show, text = "Processing...") => {
+    const overlay = document.getElementById('tablah-loading-overlay');
+    const textEl = document.getElementById('tablah-loading-text');
+    if (show) {
+        textEl.innerText = text;
+        overlay.style.display = 'flex';
+    } else {
+        overlay.style.display = 'none';
+    }
+};
+
 const assessJob = async () => {
-    if (!jobData || !jobData.description) {
-        showError("No job description found to analyze.");
-        return;
+    const btn = document.getElementById('tablah-btn-assess');
+    const importBtn = document.getElementById('tablah-btn-import');
+    
+    // Scrape fresh if we don't have jobData or if re-analyzing
+    if (!jobData || !jobData.text) {
+        const result = await genericScrape(btn, true);
+        if (!result) return;
+        jobData = result;
     }
 
-    document.getElementById('loading').style.display = 'block';
-    document.getElementById('assessment-result').style.display = 'none';
-    document.getElementById('job-info-card').style.opacity = '0.5';
+    setLoadingState(true, "Analyzing Fit...");
+    document.getElementById('tablah-assessment-result').style.display = 'none';
+    document.getElementById('tablah-job-info-card').style.opacity = '0.5';
     
-    const assessBtn = document.getElementById('btn-assess');
-    const importBtn = document.getElementById('btn-import');
-    assessBtn.disabled = true;
+    btn.disabled = true;
     importBtn.disabled = true;
-    assessBtn.innerText = "Analyzing...";
 
     try {
         const assessment = await apiFetch(`${API_BASE}${CONFIG.QUICK_API_URL}`, {
@@ -105,92 +151,113 @@ const assessJob = async () => {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${authToken}`
             },
-            body: JSON.stringify({ raw_text: jobData.description })
+            body: JSON.stringify({ raw_text: jobData.text })
         });
 
         currentAssessment = assessment;
 
         // Update UI with AI-parsed metadata
-        if (assessment.job_title) {
-            document.getElementById('job-title').innerText = assessment.job_title;
-        }
-        if (assessment.job_company) {
-            document.getElementById('job-company').innerText = assessment.job_company;
-        }
+        if (assessment.job_title) document.getElementById('tablah-job-title').innerText = assessment.job_title;
+        if (assessment.job_company) document.getElementById('tablah-job-company').innerText = assessment.job_company;
 
-        document.getElementById('score-value').innerText = `${assessment.score}%`;
-        document.getElementById('strengths-text').innerText = assessment.strengths;
-        document.getElementById('weaknesses-text').innerText = assessment.weaknesses;
+        document.getElementById('tablah-score-value').innerText = `${assessment.score}%`;
+        document.getElementById('tablah-strengths-text').innerText = assessment.strengths;
+        document.getElementById('tablah-weaknesses-text').innerText = assessment.weaknesses;
         
-        document.getElementById('assessment-result').style.display = 'block';
-        document.getElementById('assessment-details').style.display = 'block';
-        document.getElementById('btn-assess').innerText = "Re-Analyze";
+        document.getElementById('tablah-assessment-result').style.display = 'block';
+        document.getElementById('tablah-assessment-details').style.display = 'block';
+        btn.innerText = "Re-Analyze Fit";
     } catch (e) {
         showError(e.message);
+        btn.innerText = "Analyze Fit";
     } finally {
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('job-info-card').style.opacity = '1';
-        const assessBtn = document.getElementById('btn-assess');
-        const importBtn = document.getElementById('btn-import');
-        assessBtn.disabled = false;
+        setLoadingState(false);
+        document.getElementById('tablah-job-info-card').style.opacity = '1';
+        btn.disabled = false;
         importBtn.disabled = false;
-        assessBtn.innerText = "Re-Analyze Fit";
     }
 };
 
 const importJob = async () => {
-    if (!jobData) {
-        showError("No job data to import.");
-        return;
+    const btn = document.getElementById('tablah-btn-import');
+    
+    if (!jobData || !jobData.text) {
+        const result = await genericScrape(btn, true);
+        if (!result) return;
+        jobData = result;
     }
 
-    const btn = document.getElementById('btn-import');
+    setLoadingState(true, "Generating Job Draft...");
     btn.disabled = true;
-    btn.innerText = "Importing...";
 
     try {
-        // No need to re-parse, we have currentAssessment
-        const description = currentAssessment?.job_description || jobData.description;
-        const response = await apiFetch(`${API_BASE}${CONFIG.JOBS_API_URL}`, {
+        const draft = await apiFetch(`${API_BASE}${CONFIG.DRAFT_API_URL}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${authToken}`
             },
-            body: JSON.stringify({
-                title: currentAssessment?.job_title || jobData.title || "Unknown Job",
-                company: currentAssessment?.job_company || jobData.company || "Unknown Company",
-                location: currentAssessment?.job_location || "",
-                description: description,
-                source: jobData.source,
-                link: jobData.link,
-                status: "NEW",
-                is_manual: false,
-                job_hash: job_hash
-            })
+            body: JSON.stringify({ raw_text: jobData.text })
         });
 
+        await openAppTab(importUrl);
+        
         btn.innerText = "View in Tablah";
         btn.classList.replace('btn-outline', 'btn-primary');
         btn.style.backgroundColor = 'var(--success)';
-        btn.style.border = 'none';
         btn.disabled = false;
-        
-        const dashboardUrl = `${CONFIG.APP_URL}/en/dashboard/candidate/jobs#job-${response.id}`;
-        btn.onclick = () => chrome.tabs.create({ url: dashboardUrl });
-        
+        btn.onclick = async () => await openAppTab(importUrl);
     } catch (e) {
         showError(e.message);
         btn.innerText = "Import Job";
         btn.disabled = false;
+    } finally {
+        setLoadingState(false);
+    }
+};
+
+const importProfile = async () => {
+    const btn = document.getElementById('tablah-btn-import-profile');
+    const result = await genericScrape(btn, true);
+    if (!result) return;
+
+    setLoadingState(true, "Generating Profile Draft...");
+    btn.disabled = true;
+
+    try {
+        const draft = await apiFetch(`${API_BASE}${CONFIG.DRAFT_API_URL}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ raw_text: result.text })
+        });
+
+        await openAppTab(importUrl);
+        
+        btn.innerText = "Imported!";
+        btn.style.backgroundColor = 'var(--success)';
+        setTimeout(() => {
+            btn.innerText = "Import Profile";
+            btn.style.backgroundColor = '';
+            btn.disabled = false;
+        }, 2000);
+    } catch (e) {
+        showError(e.message);
+        btn.innerText = "Import Profile";
+        btn.disabled = false;
+    } finally {
+        setLoadingState(false);
     }
 };
 
 // Listeners
-document.getElementById('btn-assess').addEventListener('click', assessJob);
-document.getElementById('btn-import').addEventListener('click', importJob);
-document.getElementById('btn-login').addEventListener('click', () => {
-    chrome.tabs.create({ url: APP_URL });
+document.getElementById('tablah-btn-assess').addEventListener('click', assessJob);
+document.getElementById('tablah-btn-import-profile').addEventListener('click', importProfile);
+document.getElementById('tablah-btn-import').addEventListener('click', importJob);
+document.getElementById('tablah-btn-login').addEventListener('click', async () => {
+    await openAppTab(APP_URL);
 });
 
 // Init
@@ -202,19 +269,14 @@ document.getElementById('btn-login').addEventListener('click', () => {
     if (tab && tab.url) {
         try {
             const host = new URL(tab.url).hostname;
-            document.getElementById('site-host').innerText = host;
+            document.getElementById('tablah-site-host').innerText = host;
 
             const data = await chrome.storage.local.get(['enabled_sites']);
             const enabledSites = data.enabled_sites || [];
-            const defaultSites = ['linkedin.com', 'indeed.com'];
-            const isDefault = defaultSites.some(s => host.includes(s));
             
-            const toggle = document.getElementById('site-toggle');
-            toggle.checked = isDefault || enabledSites.includes(host);
-            if (isDefault) {
-                toggle.disabled = true;
-                document.getElementById('site-host').innerText += " (Enabled by default)";
-            }
+            const toggle = document.getElementById('tablah-site-toggle');
+            toggle.checked = enabledSites.includes(host);
+            document.getElementById('tablah-site-host').innerText = host;
 
             toggle.onchange = async () => {
                 const results = await chrome.storage.local.get(['enabled_sites']);
@@ -235,13 +297,21 @@ document.getElementById('btn-login').addEventListener('click', () => {
         showView('auth');
     } else {
         showView('main');
-        await scrapeJob();
         
-        /* Auto-trigger assessment if we have job data - DISABLED as per user request
-        if (jobData && jobData.description) {
-            assessJob();
+        // Initial "quiet" scrape to prepare jobData
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab) {
+            chrome.tabs.sendMessage(tab.id, { action: "scrape", useContext: true }, response => {
+                if (response && response.text) {
+                    jobData = response;
+                    document.getElementById('tablah-job-title').innerText = "Page Scanned";
+                    document.getElementById('tablah-job-company').innerText = "Click Analyze to see fit score";
+                } else {
+                    document.getElementById('tablah-job-title').innerText = "Job not found";
+                    document.getElementById('tablah-job-company').innerText = "Select description text manually";
+                }
+            });
         }
-        */
     }
 })();
 

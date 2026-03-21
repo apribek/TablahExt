@@ -9,7 +9,8 @@ const CONFIG = {
 
     COOKIE_DOMAIN: "localhost",               // Use domain name in production (no protocol)
     QUICK_API_URL: "/assessments/quick",         // quick or snap
-    JOBS_API_URL: "/jobs"
+    JOBS_API_URL: "/jobs",
+    DRAFT_API_URL: "/experiences/draft"
 };
 
 // Make it globally accessible for other scripts

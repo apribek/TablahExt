@@ -1,12 +1,5 @@
 const API_BASE = CONFIG.API_BASE;
 
-const generateHash = async (text) => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(text);
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-};
 
 const getAuthToken = async () => {
     const data = await chrome.storage.local.get(['clerk_token']);
@@ -30,111 +23,182 @@ const apiFetch = async (url, options) => {
 };
 
 let lastClickedElement = null;
-document.addEventListener('contextmenu', e => {
+const trackClick = e => {
     lastClickedElement = e.target;
-}, true);
+};
+document.addEventListener('contextmenu', trackClick, true);
+document.addEventListener('click', trackClick, true);
+
+const findLinkedInExperienceLink = () => {
+    if (!window.location.host.includes('linkedin.com')) return null;
+    console.log("Tablah: Checking for LinkedIn experience links...");
+    
+    // Look for links that contain "/details/experience/"
+    const links = Array.from(document.querySelectorAll('a[href*="/details/experience/"]'));
+    if (links.length > 0) {
+        console.log("Tablah: Found experience link via href:", links[0].href);
+        return links[0];
+    }
+    
+    // Fallback: search by text for "all" and "experience"
+    const allLinks = document.querySelectorAll('a, button');
+    for (const link of allLinks) {
+        const text = (link.innerText || link.getAttribute('aria-label') || "").toLowerCase();
+        // Common variants: "Show all experience", "See all experience", "View all experience"
+        if ((text.includes('show all') || text.includes('see all') || text.includes('view all')) && 
+            text.includes('experience')) {
+            console.log("Tablah: Found experience link via text:", text);
+            return link;
+        }
+    }
+    console.log("Tablah: No experience link found.");
+    return null;
+};
 
 const getUniversalRawText = (useContext = false) => {
-    // Priority 1: Smart Container-based harvesting
+    // Priority 1: Selection (Must be substantial)
     const selection = window.getSelection();
-    let target = null;
-
-    if (selection && selection.rangeCount > 0 && selection.toString().trim().length > 5) {
-        // User highlighted a part of the job
-        target = selection.getRangeAt(0).commonAncestorContainer;
-    } else if (useContext && lastClickedElement) {
-        // User right-clicked on an element (and maybe selection is empty)
-        target = lastClickedElement;
+    if (selection && selection.rangeCount > 0) {
+        const selectedText = selection.toString().trim();
+        if (selectedText.length > 100) {
+            console.log("Tablah: Harvesting from user selection");
+            return selectedText;
+        }
     }
 
-    if (target) {
-        // Resolve text node to element
-        let el = target.nodeType === 3 ? target.parentElement : target;
+    // Priority 2: Context-Aware Ascent (Smart Generic Fallback)
+    // We ascend from the last clicked element to find a container that looks like a "Main" part
+    if (useContext && lastClickedElement) {
+        let el = lastClickedElement.nodeType === 3 ? lastClickedElement.parentElement : lastClickedElement;
         
-        // Find the most appropriate container. 
-        // We look for the smallest parent that has enough content to be a job description.
-        // Typically a job description is 500+ characters. 
         while (el && el.parentElement && el.tagName !== 'BODY') {
+            const rect = el.getBoundingClientRect();
             const textLen = el.innerText.trim().length;
-            if (textLen > 600) break; // Found a likely job description container
+            
+            // If the element covers a large visual area and has enough text, it's a good candidate
+            if (rect.width > window.innerWidth * 0.4 && textLen > 400 && textLen < 20000) {
+                console.log(`Tablah: Harvesting from ascending container (${el.tagName})`);
+                return el.innerText.trim();
+            }
+            
+            if (['ARTICLE', 'MAIN', 'SECTION'].includes(el.tagName)) {
+                 if (textLen > 300) {
+                    console.log(`Tablah: Harvesting from semantic container (${el.tagName})`);
+                    return el.innerText.trim();
+                 }
+            }
+             
             el = el.parentElement;
         }
+    }
 
-        if (el && el.innerText.trim().length > 100) {
-            console.log(`Tablah: Harvesting from ${el.tagName} container (Length: ${el.innerText.length})`);
-            return el.innerText.trim();
+    // Priority 3: Common Semantic Containers
+    const main = document.querySelector('main') || 
+                 document.querySelector('article') || 
+                 document.querySelector('.scaffold-layout__main') ||
+                 document.querySelector('.pv-profile-section');
+
+    if (main) {
+        const text = main.innerText.trim();
+        // Relaxed threshold for experiences which might be shorter than job posts
+        if (text.length > 300) {
+            console.log("Tablah: Harvesting from best-match semantic container");
+            return text;
         }
     }
 
-    // Inject spinner CSS if not present
-    if (!document.getElementById('tablah-spin-styles')) {
-        const style = document.createElement('style');
-        style.id = 'tablah-spin-styles';
-        style.innerHTML = `
-            @keyframes tablah-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-            .tablah-spin { animation: tablah-rotate 1.2s linear infinite; }
-            #tablah-widget.loading { pointer-events: none; opacity: 0.8; }
-        `;
-        document.head.appendChild(style);
-    }
-    const main = document.querySelector('main') || document.querySelector('article') || document.body;
-    return main.innerText.trim();
+    return null;
 };
 
 const showQuickScore = async (widget, useContext = false) => {
-    if (widget.dataset.loading === "true") return;
+    if (widget && widget.dataset.loading === "true") return;
     
-    const textEl = widget.querySelector('span');
-    const iconEl = widget.querySelector('img');
+    // Fallback: If no widget, show a loading placeholder in the overlay
+    if (!widget) {
+        showOverlay({ loading: true });
+    }
+
+    const textEl = widget ? document.getElementById('tablah-analyze-text') : null;
+    const iconEl = widget ? document.querySelector('#tablah-btn-analyze img') : null;
     const token = await getAuthToken();
     
     if (!token) {
-        textEl.innerText = 'Login to Tablah';
-        widget.dataset.authRequired = "true";
+        if (textEl) {
+            textEl.innerText = 'Login to Tablah';
+            widget.dataset.authRequired = "true";
+        } else {
+            showOverlay({ error: 'Please login to Tablah to use AI Assessment.' });
+        }
         return;
     }
-    widget.dataset.authRequired = "false";
- 
-    const raw_text = getUniversalRawText(useContext);
-    if (!raw_text || raw_text.length < 100) return;
-
-    // Set Loading State
-    widget.dataset.loading = "true";
-    widget.classList.add('loading');
-    textEl.innerText = 'Analyzing...';
-    if (iconEl) iconEl.classList.add('tablah-spin');
+    
+    if (widget) {
+        widget.dataset.authRequired = "false";
+        widget.dataset.loading = "true";
+        widget.classList.add('loading');
+        if (textEl) textEl.innerText = 'Analyzing...';
+        if (iconEl) iconEl.classList.add('tablah-spin');
+    }
 
     try {
-        const assessment = await apiFetch(`${API_BASE}${CONFIG.QUICK_API_URL}`, {
+        const raw_text = getUniversalRawText(useContext);
+        if (!raw_text) {
+            if (textEl) textEl.innerText = 'Select text & retry';
+            else showOverlay({ error: 'No content found. Please select the job description text and try again.' });
+            return;
+        }
+
+        const assessment = await apiFetch(`${CONFIG.API_BASE}${CONFIG.QUICK_API_URL}`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify({ raw_text })
         });
-
-        textEl.innerText = `Fit Score: ${assessment.score}%`;
-        widget.style.borderLeft = `4px solid ${assessment.score > 70 ? '#22c55e' : assessment.score > 40 ? '#f59e0b' : '#ef4444'}`;
-        widget.dataset.assessment = JSON.stringify(assessment);
-
-        if (assessment.score > 80) {
-            widget.style.boxShadow = '0 0 15px rgba(34, 197, 94, 0.4)';
+        
+        if (widget) {
+            if (textEl) textEl.innerText = `Fit Score: ${assessment.score}%`;
+            widget.style.borderLeft = `4px solid ${assessment.score > 70 ? '#22c55e' : assessment.score > 40 ? '#f59e0b' : '#ef4444'}`;
+            widget.dataset.assessment = JSON.stringify(assessment);
         }
+        
+        showOverlay(assessment, raw_text);
     } catch (e) {
         console.error("Quick assess error:", e);
-        if (e.message.includes('tokenExpired') || e.message.includes('401')) {
-            textEl.innerText = 'Session Expired - Login';
-            widget.dataset.authRequired = "true";
-        } else {
-            textEl.innerText = 'Retry Analysis';
-        }
+        if (textEl) textEl.innerText = 'Retry Analysis';
+        else showOverlay({ error: 'Analysis failed. Please check your connection and try again.' });
     } finally {
-        // Reset Loading State
-        widget.dataset.loading = "false";
-        widget.classList.remove('loading');
-        if (iconEl) iconEl.classList.remove('tablah-spin');
+        if (widget) {
+            widget.dataset.loading = "false";
+            widget.classList.remove('loading');
+            if (iconEl) iconEl.classList.remove('tablah-spin');
+        }
     }
+};
+
+const getPageType = () => {
+    const host = window.location.host;
+    const path = window.location.pathname;
+    const title = document.title.toLowerCase();
+
+    if (host.includes('linkedin.com')) {
+        // Experience detection
+        const hasExpSection = !!document.getElementById('experience') || !!document.querySelector('[id*="experience"]') || !!findLinkedInExperienceLink();
+        const pathIsProfile = path.includes('/in/') || path.includes('/details/experience/');
+        if (hasExpSection || pathIsProfile) return 'profile';
+
+        // Job detection
+        const hasJobContent = !!document.querySelector('.jobs-description') || !!document.querySelector('.job-view-layout');
+        const titleIsJob = title.includes('job') && (title.includes('view') || title.includes('|'));
+        const pathIsJob = path.includes('/jobs/') || path.includes('/view/');
+        if (hasJobContent || (titleIsJob && pathIsJob)) return 'job';
+    }
+    
+    // Default fallback based on common patterns if not LinkedIn
+    if (path.includes('job') || title.includes('job')) return 'job';
+    if (path.includes('profile') || path.includes('resume')) return 'profile';
+    
+    return 'generic';
 };
 
 const clearWidgetState = (widget) => {
@@ -146,7 +210,7 @@ const clearWidgetState = (widget) => {
     const overlay = document.getElementById('tablah-overlay');
     if (overlay) overlay.remove();
 
-    const textEl = widget.querySelector('span');
+    const textEl = document.getElementById('tablah-analyze-text');
     if (textEl) textEl.innerText = "Analyze Fit";
 };
 
@@ -159,176 +223,327 @@ const createWidget = () => {
 
     widget = document.createElement('div');
     widget.id = 'tablah-widget';
-    // ... rest of style ...
-    widget.style.cssText = `
-        position: fixed;
-        bottom: 24px;
-        right: 24px;
-        z-index: 10000;
-        background: #0f172a;
-        color: white;
-        padding: 12px 16px;
-        border-radius: 10px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.6);
-        font-family: 'Inter', -apple-system, sans-serif;
-        border: 1px solid rgba(255,255,255,0.15);
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        cursor: pointer;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        max-width: 320px;
-        font-size: 14px;
-        letter-spacing: -0.01em;
+    
+    const pageType = getPageType();
+    const showExperiences = pageType === 'profile';
+    const showJobs = pageType === 'job' || pageType === 'generic';
+
+    widget.innerHTML = `
+        <style>
+            #tablah-widget {
+                position: fixed;
+                bottom: 24px;
+                right: 24px;
+                z-index: 10000;
+                background: #0f172a;
+                color: white;
+                padding: 6px;
+                border-radius: 12px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+                font-family: 'Inter', -apple-system, sans-serif;
+                border: 1px solid rgba(255,255,255,0.15);
+                display: flex;
+                flex-direction: column;
+                align-items: flex-end;
+                gap: 8px;
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+            #tablah-selection-badge {
+                padding: 4px 10px;
+                background: #38bdf8;
+                color: #0f172a;
+                font-size: 10px;
+                font-weight: 800;
+                text-transform: uppercase;
+                border-radius: 20px;
+                margin-bottom: -4px;
+                opacity: 0;
+                transform: translateY(10px);
+                transition: all 0.3s ease;
+                pointer-events: none;
+            }
+            #tablah-selection-badge.visible {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            .tablah-toolbar-content {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+            .tablah-action-btn {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: background 0.2s;
+                white-space: nowrap;
+            }
+            .tablah-action-btn:hover {
+                background: rgba(255,255,255,0.1);
+            }
+            .tablah-action-btn img {
+                width: 20px;
+                height: 20px;
+                border-radius: 4px;
+            }
+            .tablah-action-btn span {
+                font-size: 14px;
+                font-weight: 600;
+            }
+            .tablah-divider {
+                width: 1px;
+                height: 24px;
+                background: rgba(255,255,255,0.1);
+                margin: 0 4px;
+            }
+            .tablah-icon-only {
+                padding: 8px;
+            }
+        </style>
+        <div id="tablah-selection-badge">Using Selection</div>
+        <div class="tablah-toolbar-content">
+            ${showJobs ? `
+            <div class="tablah-action-btn" id="tablah-btn-analyze" title="Analyze Fit">
+                <img src="${chrome.runtime.getURL('/icons/icon48.png')}">
+                <span id="tablah-analyze-text">Analyze Fit</span>
+            </div>
+            <div class="tablah-divider"></div>
+            <div class="tablah-action-btn tablah-icon-only" id="tablah-btn-import-job-widget" title="Import Job">
+                <img src="${chrome.runtime.getURL('/icons/icon48.png')}" style="filter: grayscale(1) brightness(1.5);">
+            </div>
+            ` : ''}
+            ${showExperiences ? `
+            <div class="tablah-action-btn tablah-icon-only" id="tablah-btn-import-exp-widget" title="Import Experiences">
+                <img src="${chrome.runtime.getURL('/icons/icon48.png')}" style="filter: hue-rotate(180deg) brightness(1.2);">
+            </div>
+            ` : ''}
+        </div>
     `;
 
-    const icon = document.createElement('img');
-    icon.src = chrome.runtime.getURL('/icons/icon48.png');
-    icon.style.width = '24px';
-    icon.style.height = '24px';
-    icon.style.borderRadius = '5px';
+    document.body.appendChild(widget);
 
-    const text = document.createElement('span');
-    text.innerText = 'Analyze Fit';
-    text.style.fontWeight = '600';
+    // Click handler for Analyze Fit
+    const analyzeBtn = document.getElementById('tablah-btn-analyze');
+    if (analyzeBtn) {
+        analyzeBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (widget.dataset.authRequired === "true") {
+                window.open(CONFIG.APP_URL, '_blank');
+                return;
+            }
+            const assessment = widget.dataset.assessment ? JSON.parse(widget.dataset.assessment) : null;
+            if (assessment) {
+                showOverlay(assessment);
+            } else {
+                showQuickScore(widget, true); 
+            }
+        };
+    }
 
-    widget.appendChild(icon);
-    widget.appendChild(text);
+    // Click handler for Import Job
+    const importJobBtn = document.getElementById('tablah-btn-import-job-widget');
+    if (importJobBtn) {
+        importJobBtn.onclick = async (e) => {
+            e.stopPropagation();
+            const text = getUniversalRawText(true);
+            if (text) {
+                chrome.runtime.sendMessage({ 
+                    action: "autoImport", 
+                    type: "jobs", 
+                    text,
+                    source: window.location.host,
+                    link: window.location.href
+                });
+            }
+        };
+    }
 
-    widget.onmouseenter = () => widget.style.transform = 'translateY(-5px) scale(1.02)';
-    widget.onmouseleave = () => widget.style.transform = 'translateY(0) scale(1)';
+    // Click handler for Import Experiences
+    const importExpBtn = document.getElementById('tablah-btn-import-exp-widget');
+    if (importExpBtn) {
+        importExpBtn.onclick = async (e) => {
+            e.stopPropagation();
+            
+            // Re-use the existing LinkedIn redirection/import logic
+            const linkedInLink = findLinkedInExperienceLink();
+            const isAlreadyDetailed = window.location.pathname.includes('/details/experience/');
 
-    widget.onclick = () => {
-        if (widget.dataset.authRequired === "true") {
-            window.open('http://localhost:3000', '_blank');
-            return;
-        }
-        const assessment = widget.dataset.assessment ? JSON.parse(widget.dataset.assessment) : null;
-        if (assessment) {
-            showOverlay(assessment);
+            if (linkedInLink && !isAlreadyDetailed) {
+                chrome.storage.local.set({ tablah_pending_import: 'experiences' }).then(() => {
+                    if (linkedInLink.href) window.location.href = linkedInLink.href;
+                    else linkedInLink.click();
+                });
+            } else {
+                const text = getUniversalRawText(true);
+                if (text) {
+                    chrome.runtime.sendMessage({ 
+                        action: "autoImport", 
+                        type: "experiences", 
+                        text,
+                        source: window.location.host,
+                        link: window.location.href
+                    });
+                }
+            }
+        };
+    }
+
+    // Selection Listener for Badge
+    const updateSelectionBadge = () => {
+        const badge = document.getElementById('tablah-selection-badge');
+        if (!badge) return;
+        const sel = window.getSelection().toString().trim();
+        if (sel.length > 100) {
+            badge.classList.add('visible');
         } else {
-            showQuickScore(widget);
+            badge.classList.remove('visible');
         }
     };
-
-    document.body.appendChild(widget);
+    document.addEventListener('selectionchange', updateSelectionBadge);
+    updateSelectionBadge();
 };
 
-const showOverlay = (assessment) => {
+const showOverlay = (assessment, originalRawText = null) => {
     let overlay = document.getElementById('tablah-overlay');
     if (overlay) overlay.remove();
 
     overlay = document.createElement('div');
     overlay.id = 'tablah-overlay';
+    // ... animation styles ...
     overlay.style.cssText = `
         position: fixed;
         bottom: 80px;
         right: 24px;
-        width: 680px;
+        width: 480px;
         max-height: 80vh;
         overflow-y: auto;
-        background: #1e293b;
+        background: #0f172a;
         color: #f8fafc;
-        border-radius: 12px;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        border-radius: 16px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.7);
         z-index: 10001;
         padding: 24px;
         font-family: 'Inter', system-ui, sans-serif;
         border: 1px solid rgba(255,255,255,0.1);
-        animation: slideIn 0.3s ease-out;
+        animation: tablah-slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        backdrop-filter: blur(10px);
     `;
+
+    if (originalRawText) {
+        overlay.dataset.rawText = originalRawText;
+    }
+
+    if (assessment.loading) {
+        overlay.innerHTML = `
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 0; gap: 16px;">
+                <div class="tablah-spinner" style="width: 32px; height: 32px; border: 3px solid rgba(255,255,255,0.1); border-top-color: #38bdf8; border-radius: 50%; animation: tablah-spin 1s linear infinite;"></div>
+                <div style="font-weight: 600; color: #94a3b8;">Analyzing Job with Tablah AI...</div>
+            </div>
+            <style>
+                @keyframes tablah-spin { to { transform: rotate(360deg); } }
+            </style>
+        `;
+        document.body.appendChild(overlay);
+        return;
+    }
+
+    if (assessment.error) {
+        overlay.innerHTML = `
+             <div class="tablah-title">
+                <span>Issue Detected</span>
+                <span class="tablah-close">&times;</span>
+            </div>
+            <div style="color: #f87171; font-size: 14px; line-height: 1.5; margin-top: 8px;">${assessment.error}</div>
+        `;
+        document.body.appendChild(overlay);
+        overlay.querySelector('.tablah-close').onclick = () => overlay.remove();
+        return;
+    }
 
     overlay.innerHTML = `
         <style>
-            @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } }
-            .t-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; }
-            .t-score { color: #38bdf8; }
-            .t-section { margin-bottom: 15px; }
-            .t-heading { font-size: 11px; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px; margin-bottom: 5px; font-weight: 600; }
-            .t-body { font-size: 13px; line-height: 1.5; color: #cbd5e1; }
-            .t-close { cursor: pointer; color: #94a3b8; font-size: 20px; }
-            .t-btn { background: #2563eb; color: white; border: none; padding: 10px; border-radius: 6px; width: 100%; margin-top: 10px; font-weight: 600; cursor: pointer; }
+            @keyframes tablah-slideIn { from { opacity: 0; transform: translateY(20px); } }
+            .tablah-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; }
+            .tablah-score { color: #38bdf8; }
+            .tablah-section { margin-bottom: 15px; }
+            .tablah-heading { font-size: 11px; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px; margin-bottom: 5px; font-weight: 600; }
+            .tablah-body { font-size: 13px; line-height: 1.5; color: #cbd5e1; }
+            .tablah-close { cursor: pointer; color: #94a3b8; font-size: 20px; }
+            .tablah-btn { background: #2563eb; color: white; border: none; padding: 10px; border-radius: 6px; width: 100%; margin-top: 10px; font-weight: 600; cursor: pointer; }
         </style>
-        <div class="t-title">
+        <div class="tablah-title">
             <span>${assessment.job_title || 'AI Assessment'}</span>
-            <span class="t-close">&times;</span>
+            <span class="tablah-close">&times;</span>
         </div>
-        <div class="t-section">
-            <div class="t-heading">Company</div>
-            <div class="t-body" style="font-weight: 600;">${assessment.job_company || 'Unknown Company'} (${assessment.job_location || 'Unknown Location'})</div>
+        <div class="tablah-section">
+            <div class="tablah-heading">Company</div>
+            <div class="tablah-body" style="font-weight: 600;">${assessment.job_company || 'Unknown Company'} (${assessment.job_location || 'Unknown Location'})</div>
         </div>
-        <div class="t-section">
-            <div class="t-heading">Fit Score</div>
-            <div class="t-body t-score" style="font-size: 24px; font-weight: 800;">${assessment.score}%</div>
+        <div class="tablah-section">
+            <div class="tablah-heading">Fit Score</div>
+            <div class="tablah-body tablah-score" style="font-size: 24px; font-weight: 800;">${assessment.score}%</div>
         </div>
-        <div class="t-section">
-            <div class="t-heading">Strengths</div>
-            <div class="t-body">${assessment.strengths}</div>
+        <div class="tablah-section">
+            <div class="tablah-heading">Strengths</div>
+            <div class="tablah-body">${assessment.strengths}</div>
         </div>
-        <div class="t-section">
-            <div class="t-heading">Gap Analysis</div>
-            <div class="t-body">${assessment.weaknesses}</div>
+        <div class="tablah-section">
+            <div class="tablah-heading">Gap Analysis</div>
+            <div class="tablah-body">${assessment.weaknesses}</div>
         </div>
-        <button class="t-btn" id="t-import-btn">Import to Tablah</button>
+        <button class="tablah-btn" id="tablah-import-btn">Import to Tablah</button>
     `;
 
-    overlay.querySelector('.t-close').onclick = () => overlay.remove();
-    overlay.querySelector('#t-import-btn').onclick = async (e) => {
+    overlay.querySelector('.tablah-close').onclick = () => overlay.remove();
+    overlay.querySelector('#tablah-import-btn').onclick = async (e) => {
         const btn = e.target;
-        btn.innerText = 'Importing...';
-        btn.disabled = true;
+        const raw_text = overlay.dataset.rawText || getUniversalRawText(true);
         
-        try {
-            const token = await getAuthToken();
-            const raw_text = getUniversalRawText();
-            const cleaned_description = assessment.job_description || raw_text;
-            const job_hash = await generateHash(cleaned_description + window.location.href);
-            
-            const response = await apiFetch(`${API_BASE}${CONFIG.JOBS_API_URL}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    title: assessment.job_title || "Unknown Title",
-                    company: assessment.job_company || "Unknown Company",
-                    description: cleaned_description,
-                    location: assessment.job_location,
-                    link: window.location.href,
-                    source: window.location.host,
-                    status: 'NEW',
-                    is_manual: false,
-                    job_hash: job_hash
-                })
-            });
-            
-            btn.innerText = 'View in Tablah';
-            btn.style.backgroundColor = '#22c55e';
+        if (!raw_text) {
+            btn.innerText = 'Text Not Found';
             btn.disabled = false;
-            const dashboardUrl = `${CONFIG.APP_URL}/en/dashboard/candidate/jobs#job-${response.id}`;
-            btn.onclick = () => window.open(dashboardUrl, '_blank');
-        } catch (err) {
-            btn.innerText = 'Error';
-            btn.disabled = false;
+            return;
         }
+
+        btn.innerText = 'Opening Magic Import...';
+        btn.disabled = true;
+
+        // Trigger the "Magic Import" workflow via the service worker (Draft -> Tab Redirect)
+        chrome.runtime.sendMessage({ 
+            action: "autoImport", 
+            type: "jobs", 
+            text: raw_text 
+        });
+
+        // Close overlay as the user is being redirected
+        setTimeout(() => overlay.remove(), 1000);
     };
 
     document.body.appendChild(overlay);
 };
 
-// Site Enablement Helper
 const shouldShowWidget = async () => {
     const host = window.location.hostname;
-    const defaultSites = ['linkedin.com', 'indeed.com'];
-    if (defaultSites.some(s => host.includes(s))) return true;
+    const path = window.location.pathname.toLowerCase();
+    
+    // Generic Job Site Detection
+    const jobKeywords = ['/jobs', '/career', '/vacancy', '/recruitment', '/apply', '/postings'];
+    const isJobPage = jobKeywords.some(k => path.includes(k)) || 
+                      document.querySelector('meta[property*="job"]') ||
+                      document.querySelector('script[type="application/ld+json"]:contains("JobPosting")');
 
+    if (isJobPage) return true;
+
+    // User whitelist
     const data = await chrome.storage.local.get(['enabled_sites']);
     const enabledSites = data.enabled_sites || [];
     return enabledSites.includes(host);
 };
 
-// URL mutation observer to detect job page changes on SPA LinkedIn
+// URL mutation observer to detect job page changes on LinkedIn
 let lastUrl = location.href;
 let widgetTimeout;
 const observer = new MutationObserver(async () => {
@@ -346,26 +561,45 @@ const observer = new MutationObserver(async () => {
 observer.observe(document, { subtree: true, childList: true });
 
 // Initial run
-shouldShowWidget().then(show => {
-    if (show) widgetTimeout = setTimeout(createWidget, 2000);
-});
+// Initial run disabled as per user request
+// shouldShowWidget().then(show => {
+//     if (show) widgetTimeout = setTimeout(createWidget, 2000);
+// });
+
+const getProfileRawText = () => {
+    return getUniversalRawText(true); // Share the same generic logic
+};
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "scrapeJob") {
+    if (request.action === "scrape") {
+        const linkedInLink = findLinkedInExperienceLink();
+        const isAlreadyDetailed = window.location.pathname.includes('/details/experience/');
+
+        if (linkedInLink && !isAlreadyDetailed) {
+            console.log("Tablah: Redirecting to full experience list for better data...");
+            chrome.storage.local.set({ tablah_pending_import: 'experiences' }).then(() => {
+                // Short delay to ensure storage is flushed
+                setTimeout(() => {
+                    if (linkedInLink.href) {
+                        window.location.href = linkedInLink.href;
+                    } else {
+                        linkedInLink.click();
+                    }
+                }, 100);
+            });
+            sendResponse({ status: "redirecting" });
+            return true;
+        }
+
+        const text = getUniversalRawText(request.useContext || false);
         sendResponse({ 
-            description: getUniversalRawText(true), 
+            text, 
             source: window.location.host, 
             link: window.location.href 
         });
     } else if (request.action === "analyzeSelected") {
-        let widget = document.getElementById('tablah-widget');
-        if (!widget) {
-            createWidget();
-            widget = document.getElementById('tablah-widget');
-        }
-        if (widget) {
-            showQuickScore(widget, request.useContext || false);
-        }
+        const widget = document.getElementById('tablah-widget');
+        showQuickScore(widget, request.useContext || false);
     }
     return true;
 });
@@ -390,9 +624,9 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
         if (changes.enabled_sites) {
             const enabledSites = changes.enabled_sites.newValue || [];
             if (enabledSites.includes(host)) {
-                if (!document.getElementById('tablah-widget')) {
-                    createWidget();
-                }
+                // if (!document.getElementById('tablah-widget')) {
+                //     createWidget();
+                // }
             } else {
                 const defaultSites = ['linkedin.com', 'indeed.com'];
                 if (!defaultSites.some(s => host.includes(s))) {
@@ -402,4 +636,38 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
             }
         }
     }
+});
+// Auto-Resume LinkedIn Import
+(async () => {
+    const data = await chrome.storage.local.get(['tablah_pending_import']);
+    const isDetailed = window.location.pathname.includes('/details/experience/');
+    
+    if (data.tablah_pending_import === 'experiences' && isDetailed) {
+        await chrome.storage.local.remove('tablah_pending_import');
+        console.log("Tablah: Resuming auto-import on details page...");
+        
+        // Wait for LinkedIn to load content (DOM can be slow)
+        setTimeout(async () => {
+            const text = getUniversalRawText(true);
+            if (text && text.length > 300) {
+                console.log("Tablah: Successfully harvested experience text. Sending to Magic Import...");
+                chrome.runtime.sendMessage({ 
+                    action: "autoImport", 
+                    type: "experiences", 
+                    text,
+                    source: window.location.host,
+                    link: window.location.href
+                });
+            } else {
+                console.warn("Tablah: Auto-import failed. Content too short or container not found.", { length: text ? text.length : 0 });
+            }
+        }, 3500);
+    }
+})();
+
+// SPA Navigation Support for LinkedIn
+window.addEventListener('popstate', () => {
+    const w = document.getElementById('tablah-widget');
+    if (w) w.remove();
+    // createWidget();
 });
