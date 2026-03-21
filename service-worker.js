@@ -17,6 +17,20 @@ const getFreshAuthToken = async () => {
     return data.clerk_token;
 };
 
+chrome.runtime.onInstalled.addListener(() => {
+    chrome.contextMenus.create({
+        id: "analyze-with-tablah",
+        title: "Analyze Fit with Tablah",
+        contexts: ["all"]
+    });
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === "analyze-with-tablah") {
+        chrome.tabs.sendMessage(tab.id, { action: "analyzeSelected", useContext: true });
+    }
+});
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'apiFetch') {
         (async () => {

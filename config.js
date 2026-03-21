@@ -6,8 +6,10 @@ const CONFIG = {
 
     // APP_URL: "https://tablah.hu",           // Production
     APP_URL: "http://localhost:3000",         // Local
-    
-    COOKIE_DOMAIN: "localhost"                // Use domain name in production (no protocol)
+
+    COOKIE_DOMAIN: "localhost",               // Use domain name in production (no protocol)
+    QUICK_API_URL: "/assessments/quick",         // quick or snap
+    JOBS_API_URL: "/jobs"
 };
 
 // Make it globally accessible for other scripts

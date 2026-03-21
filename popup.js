@@ -99,7 +99,7 @@ const assessJob = async () => {
     assessBtn.innerText = "Analyzing...";
 
     try {
-        const assessment = await apiFetch(`${API_BASE}/assessments/quick`, {
+        const assessment = await apiFetch(`${API_BASE}${CONFIG.QUICK_API_URL}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -151,7 +151,7 @@ const importJob = async () => {
     try {
         // No need to re-parse, we have currentAssessment
         const description = currentAssessment?.job_description || jobData.description;
-        const response = await apiFetch(`${API_BASE}/jobs`, {
+        const response = await apiFetch(`${API_BASE}${CONFIG.JOBS_API_URL}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

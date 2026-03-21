@@ -29,7 +29,43 @@ const apiFetch = async (url, options) => {
     });
 };
 
-const getUniversalRawText = () => {
+let lastClickedElement = null;
+document.addEventListener('contextmenu', e => {
+    lastClickedElement = e.target;
+}, true);
+
+const getUniversalRawText = (useContext = false) => {
+    // Priority 1: Smart Container-based harvesting
+    const selection = window.getSelection();
+    let target = null;
+
+    if (selection && selection.rangeCount > 0 && selection.toString().trim().length > 5) {
+        // User highlighted a part of the job
+        target = selection.getRangeAt(0).commonAncestorContainer;
+    } else if (useContext && lastClickedElement) {
+        // User right-clicked on an element (and maybe selection is empty)
+        target = lastClickedElement;
+    }
+
+    if (target) {
+        // Resolve text node to element
+        let el = target.nodeType === 3 ? target.parentElement : target;
+        
+        // Find the most appropriate container. 
+        // We look for the smallest parent that has enough content to be a job description.
+        // Typically a job description is 500+ characters. 
+        while (el && el.parentElement && el.tagName !== 'BODY') {
+            const textLen = el.innerText.trim().length;
+            if (textLen > 600) break; // Found a likely job description container
+            el = el.parentElement;
+        }
+
+        if (el && el.innerText.trim().length > 100) {
+            console.log(`Tablah: Harvesting from ${el.tagName} container (Length: ${el.innerText.length})`);
+            return el.innerText.trim();
+        }
+    }
+
     // Inject spinner CSS if not present
     if (!document.getElementById('tablah-spin-styles')) {
         const style = document.createElement('style');
@@ -45,7 +81,7 @@ const getUniversalRawText = () => {
     return main.innerText.trim();
 };
 
-const showQuickScore = async (widget) => {
+const showQuickScore = async (widget, useContext = false) => {
     if (widget.dataset.loading === "true") return;
     
     const textEl = widget.querySelector('span');
@@ -58,8 +94,8 @@ const showQuickScore = async (widget) => {
         return;
     }
     widget.dataset.authRequired = "false";
-
-    const raw_text = getUniversalRawText();
+ 
+    const raw_text = getUniversalRawText(useContext);
     if (!raw_text || raw_text.length < 100) return;
 
     // Set Loading State
@@ -69,7 +105,7 @@ const showQuickScore = async (widget) => {
     if (iconEl) iconEl.classList.add('tablah-spin');
 
     try {
-        const assessment = await apiFetch(`${API_BASE}/assessments/quick`, {
+        const assessment = await apiFetch(`${API_BASE}${CONFIG.QUICK_API_URL}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -248,7 +284,7 @@ const showOverlay = (assessment) => {
             const cleaned_description = assessment.job_description || raw_text;
             const job_hash = await generateHash(cleaned_description + window.location.href);
             
-            const response = await apiFetch(`${API_BASE}/jobs`, {
+            const response = await apiFetch(`${API_BASE}${CONFIG.JOBS_API_URL}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -317,10 +353,19 @@ shouldShowWidget().then(show => {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "scrapeJob") {
         sendResponse({ 
-            description: getUniversalRawText(), 
+            description: getUniversalRawText(true), 
             source: window.location.host, 
             link: window.location.href 
         });
+    } else if (request.action === "analyzeSelected") {
+        let widget = document.getElementById('tablah-widget');
+        if (!widget) {
+            createWidget();
+            widget = document.getElementById('tablah-widget');
+        }
+        if (widget) {
+            showQuickScore(widget, request.useContext || false);
+        }
     }
     return true;
 });
