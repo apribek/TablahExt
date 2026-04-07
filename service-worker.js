@@ -17,26 +17,31 @@ const getFreshAuthToken = async () => {
     return data.clerk_token;
 };
 
-chrome.runtime.onInstalled.addListener(() => {
-    chrome.contextMenus.create({
-        id: "analyze-with-tablah",
-        title: "Analyze Fit with Tablah",
-        contexts: ["page", "selection"]
+const registerContextMenus = () => {
+    chrome.contextMenus.removeAll(() => {
+        chrome.contextMenus.create({
+            id: "score-with-tablah",
+            title: "Score Job Fit with Tablah",
+            contexts: ["page", "selection"]
+        });
+        chrome.contextMenus.create({
+            id: "import-profile-tablah",
+            title: "Import Experiences with Tablah",
+            contexts: ["page", "selection"]
+        });
+        chrome.contextMenus.create({
+            id: "import-job-tablah",
+            title: "Import Job with Tablah",
+            contexts: ["page", "selection"]
+        });
     });
-    chrome.contextMenus.create({
-        id: "import-profile-tablah",
-        title: "Import Experiences with Tablah",
-        contexts: ["page", "selection"]
-    });
-    chrome.contextMenus.create({
-        id: "import-job-tablah",
-        title: "Import Job with Tablah",
-        contexts: ["page", "selection"]
-    });
-});
+};
+
+chrome.runtime.onInstalled.addListener(registerContextMenus);
+chrome.runtime.onStartup.addListener(registerContextMenus);
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-    if (info.menuItemId === "analyze-with-tablah") {
+    if (info.menuItemId === "score-with-tablah") {
         chrome.tabs.sendMessage(tab.id, { action: "analyzeSelected", useContext: true });
     } else if (info.menuItemId === "import-profile-tablah") {
         const response = await chrome.tabs.sendMessage(tab.id, { action: "scrape", useContext: true });
@@ -61,7 +66,7 @@ const openAppTab = async (url) => {
     }
 };
 
-const saveDraftAndRedirect = async (text, type, tabId) => {
+const saveDraftAndRedirect = async (text, type, _tabId) => {
     try {
         const token = await getFreshAuthToken();
         const response = await fetch(`${CONFIG.API_BASE}${CONFIG.DRAFT_API_URL}`, {
@@ -114,5 +119,49 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } else if (request.action === 'autoImport') {
         saveDraftAndRedirect(request.text, request.type, sender.tab.id);
         return true;
+    } else if (request.action === 'silentImport') {
+        saveDraftSilent(request.text, request.type);
+        sendResponse({status: "queued"});
+        return true;
+    } else if (request.action === 'processDetailTabs') {
+        startDetailTabQueue(request.links, sender.tab.id);
+    } else if (request.action === 'detailTabDone') {
+        chrome.tabs.remove(sender.tab.id);
+        setTimeout(() => processNextDetailTab(), 3000); // 3 seconds stealth gap
     }
 });
+
+const saveDraftSilent = async (text, _type) => {
+    try {
+        const token = await getFreshAuthToken();
+        await fetch(`${CONFIG.API_BASE}${CONFIG.DRAFT_API_URL}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ raw_text: text })
+        });
+        // We just save it silently to DB, the sweep keeps running.
+    } catch (e) {
+        console.error("Error in saveDraftSilent:", e);
+    }
+};
+
+let detailQueue = [];
+let sweepMainTabId = null;
+
+const startDetailTabQueue = (links, mainTabId) => {
+    detailQueue = links;
+    sweepMainTabId = mainTabId;
+    processNextDetailTab();
+};
+
+const processNextDetailTab = () => {
+    if (detailQueue.length > 0) {
+        const nextUrl = detailQueue.shift();
+        chrome.storage.local.set({ activeDetailScrapeURL: nextUrl }, () => {
+            chrome.tabs.create({ url: nextUrl, active: false });
+        });
+    } else {
+        // Queue empty, tell the main tab to paginate
+        chrome.tabs.sendMessage(sweepMainTabId, { action: 'detailTabsFinished' });
+    }
+};

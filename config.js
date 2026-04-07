@@ -8,7 +8,7 @@ const CONFIG = {
     APP_URL: "http://localhost:3000",         // Local
 
     COOKIE_DOMAIN: "localhost",               // Use domain name in production (no protocol)
-    QUICK_API_URL: "/assessments/quick",         // quick or snap
+    SCORE_API_URL: "/assessments/score",
     JOBS_API_URL: "/jobs",
     DRAFT_API_URL: "/experiences/draft"
 };

@@ -110,69 +110,116 @@ const getUniversalRawText = (useContext = false) => {
     return null;
 };
 
-const showQuickScore = async (widget, useContext = false) => {
+const scoreColor = (score) =>
+    score > 70 ? '#22c55e' : score > 40 ? '#f59e0b' : '#ef4444';
+
+const showScore = async (widget, useContext = false) => {
     if (widget && widget.dataset.loading === "true") return;
-    
-    // Fallback: If no widget, show a loading placeholder in the overlay
-    if (!widget) {
-        showOverlay({ loading: true });
-    }
 
     const textEl = widget ? document.getElementById('tablah-analyze-text') : null;
     const iconEl = widget ? document.querySelector('#tablah-btn-analyze img') : null;
     const token = await getAuthToken();
-    
+
     if (!token) {
-        if (textEl) {
-            textEl.innerText = 'Login to Tablah';
-            widget.dataset.authRequired = "true";
-        } else {
-            showOverlay({ error: 'Please login to Tablah to use AI Assessment.' });
-        }
+        if (textEl) { textEl.innerText = 'Login to Tablah'; widget.dataset.authRequired = "true"; }
+        else showOverlay({ error: 'Please login to Tablah to use AI scoring.' });
         return;
     }
-    
+
     if (widget) {
         widget.dataset.authRequired = "false";
         widget.dataset.loading = "true";
         widget.classList.add('loading');
         if (textEl) textEl.innerText = 'Analyzing...';
         if (iconEl) iconEl.classList.add('tablah-spin');
+    } else {
+        showOverlay({ loading: true });
     }
 
     try {
         const raw_text = getUniversalRawText(useContext);
         if (!raw_text) {
             if (textEl) textEl.innerText = 'Select text & retry';
-            else showOverlay({ error: 'No content found. Please select the job description text and try again.' });
+            else showOverlay({ error: 'No content found. Please select the job description and try again.' });
             return;
         }
 
-        const assessment = await apiFetch(`${CONFIG.API_BASE}${CONFIG.QUICK_API_URL}`, {
+        // Stage 1: POST with full text
+        const result = await apiFetch(`${CONFIG.API_BASE}${CONFIG.SCORE_API_URL}`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ raw_text })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ raw_text, link: window.location.href })
         });
-        
+
         if (widget) {
-            if (textEl) textEl.innerText = `Fit Score: ${assessment.score}%`;
-            widget.style.borderLeft = `4px solid ${assessment.score > 70 ? '#22c55e' : assessment.score > 40 ? '#f59e0b' : '#ef4444'}`;
-            widget.dataset.assessment = JSON.stringify(assessment);
+            if (textEl) textEl.innerText = `Fit Score: ${result.score}%`;
+            widget.style.borderLeft = `4px solid ${scoreColor(result.score)}`;
+            widget.dataset.assessment = JSON.stringify(result);
         }
-        
-        showOverlay(assessment, raw_text);
+
+        showOverlay(result);
+
+        // Stage 2: poll until is_final if the backend is still refining
+        if (!result.is_final && result.candidate_job_id) {
+            pollScore(result.candidate_job_id, widget);
+        }
+
     } catch (e) {
-        console.error("Quick assess error:", e);
+        console.error("Score error:", e);
         if (textEl) textEl.innerText = 'Retry Analysis';
-        else showOverlay({ error: 'Analysis failed. Please check your connection and try again.' });
+        else showOverlay({ error: 'Scoring failed. Please check your connection and try again.' });
     } finally {
         if (widget) {
             widget.dataset.loading = "false";
             widget.classList.remove('loading');
             if (iconEl) iconEl.classList.remove('tablah-spin');
         }
+    }
+};
+
+const pollScore = async (candidateJobId, widget, attempts = 0) => {
+    const MAX_ATTEMPTS = 10;
+    const INTERVAL_MS = 4000;
+
+    if (attempts >= MAX_ATTEMPTS) return;
+
+    await new Promise(r => setTimeout(r, INTERVAL_MS));
+
+    try {
+        const result = await apiFetch(
+            `${CONFIG.API_BASE}${CONFIG.SCORE_API_URL}/${candidateJobId}`,
+            { method: 'GET', headers: { 'Content-Type': 'application/json' } }
+        );
+
+        // Update overlay score in place if it's still open
+        const overlay = document.getElementById('tablah-overlay');
+        if (overlay && overlay.dataset.candidateJobId === candidateJobId) {
+            const scoreEl = overlay.querySelector('#tablah-score-value');
+            const badgeEl = overlay.querySelector('#tablah-refining-badge');
+            if (scoreEl) {
+                scoreEl.innerText = `${result.score}%`;
+                scoreEl.style.color = scoreColor(result.score);
+            }
+            if (badgeEl) {
+                if (result.is_final) badgeEl.remove();
+                else badgeEl.innerText = 'Refining…';
+            }
+            updateFacetBars(overlay, result.facet_scores);
+        }
+
+        // Update widget border
+        if (widget) {
+            widget.style.borderLeft = `4px solid ${scoreColor(result.score)}`;
+            const textEl = document.getElementById('tablah-analyze-text');
+            if (textEl) textEl.innerText = `Fit Score: ${result.score}%`;
+            widget.dataset.assessment = JSON.stringify(result);
+        }
+
+        if (!result.is_final) {
+            pollScore(candidateJobId, widget, attempts + 1);
+        }
+    } catch (e) {
+        console.error("Poll error:", e);
     }
 };
 
@@ -406,13 +453,48 @@ const createWidget = () => {
     updateSelectionBadge();
 };
 
-const showOverlay = (assessment, originalRawText = null) => {
+const FACET_LABELS = {
+    skill_score: 'Skills',
+    domain_score: 'Domain',
+    seniority_score: 'Seniority',
+    behavior_score: 'Soft Skills',
+};
+
+const updateFacetBars = (overlay, facetScores) => {
+    if (!facetScores) return;
+    for (const [key] of Object.entries(FACET_LABELS)) {
+        const bar = overlay.querySelector(`[data-facet="${key}"] .tablah-bar-fill`);
+        const val = overlay.querySelector(`[data-facet="${key}"] .tablah-bar-val`);
+        const score = facetScores[key] ?? 0;
+        if (bar) bar.style.width = `${score}%`;
+        if (val) val.innerText = `${score}%`;
+    }
+};
+
+const facetBarsHtml = (facetScores) => {
+    if (!facetScores) return '';
+    const rows = Object.entries(FACET_LABELS).map(([key, label]) => {
+        const score = facetScores[key] ?? 0;
+        const color = scoreColor(score);
+        return `
+            <div data-facet="${key}" style="margin-bottom: 6px;">
+                <div style="display:flex; justify-content:space-between; font-size:11px; color:#94a3b8; margin-bottom:3px;">
+                    <span>${label}</span><span class="tablah-bar-val">${score}%</span>
+                </div>
+                <div style="background:rgba(255,255,255,0.08); border-radius:4px; height:5px;">
+                    <div class="tablah-bar-fill" style="width:${score}%; height:100%; border-radius:4px; background:${color}; transition: width 0.5s ease;"></div>
+                </div>
+            </div>`;
+    }).join('');
+    return `<div class="tablah-section"><div class="tablah-heading">Facet Breakdown</div>${rows}</div>`;
+};
+
+const showOverlay = (result) => {
     let overlay = document.getElementById('tablah-overlay');
     if (overlay) overlay.remove();
 
     overlay = document.createElement('div');
     overlay.id = 'tablah-overlay';
-    // ... animation styles ...
     overlay.style.cssText = `
         position: fixed;
         bottom: 80px;
@@ -432,94 +514,82 @@ const showOverlay = (assessment, originalRawText = null) => {
         backdrop-filter: blur(10px);
     `;
 
-    if (originalRawText) {
-        overlay.dataset.rawText = originalRawText;
-    }
-
-    if (assessment.loading) {
+    if (result.loading) {
         overlay.innerHTML = `
-            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 0; gap: 16px;">
-                <div class="tablah-spinner" style="width: 32px; height: 32px; border: 3px solid rgba(255,255,255,0.1); border-top-color: #38bdf8; border-radius: 50%; animation: tablah-spin 1s linear infinite;"></div>
-                <div style="font-weight: 600; color: #94a3b8;">Analyzing Job with Tablah AI...</div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 0;gap:16px;">
+                <div style="width:32px;height:32px;border:3px solid rgba(255,255,255,0.1);border-top-color:#38bdf8;border-radius:50%;animation:tablah-spin 1s linear infinite;"></div>
+                <div style="font-weight:600;color:#94a3b8;">Analyzing Job with Tablah AI…</div>
             </div>
-            <style>
-                @keyframes tablah-spin { to { transform: rotate(360deg); } }
-            </style>
+            <style>@keyframes tablah-spin{to{transform:rotate(360deg);}}</style>
         `;
         document.body.appendChild(overlay);
         return;
     }
 
-    if (assessment.error) {
+    if (result.error) {
         overlay.innerHTML = `
-             <div class="tablah-title">
-                <span>Issue Detected</span>
-                <span class="tablah-close">&times;</span>
-            </div>
-            <div style="color: #f87171; font-size: 14px; line-height: 1.5; margin-top: 8px;">${assessment.error}</div>
+            <div class="tablah-title"><span>Issue Detected</span><span class="tablah-close">&times;</span></div>
+            <div style="color:#f87171;font-size:14px;line-height:1.5;margin-top:8px;">${result.error}</div>
+            <style>.tablah-title{font-size:16px;font-weight:700;margin-bottom:12px;display:flex;justify-content:space-between;}.tablah-close{cursor:pointer;color:#94a3b8;font-size:20px;}</style>
         `;
         document.body.appendChild(overlay);
         overlay.querySelector('.tablah-close').onclick = () => overlay.remove();
         return;
     }
 
+    if (result.candidate_job_id) overlay.dataset.candidateJobId = result.candidate_job_id;
+
+    const color = scoreColor(result.score);
+    const refiningBadge = result.is_final ? '' :
+        `<span id="tablah-refining-badge" style="font-size:10px;font-weight:700;text-transform:uppercase;color:#f59e0b;letter-spacing:0.5px;">Refining…</span>`;
+
     overlay.innerHTML = `
         <style>
             @keyframes tablah-slideIn { from { opacity: 0; transform: translateY(20px); } }
-            .tablah-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; }
-            .tablah-score { color: #38bdf8; }
+            .tablah-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
             .tablah-section { margin-bottom: 15px; }
             .tablah-heading { font-size: 11px; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px; margin-bottom: 5px; font-weight: 600; }
             .tablah-body { font-size: 13px; line-height: 1.5; color: #cbd5e1; }
-            .tablah-close { cursor: pointer; color: #94a3b8; font-size: 20px; }
-            .tablah-btn { background: #2563eb; color: white; border: none; padding: 10px; border-radius: 6px; width: 100%; margin-top: 10px; font-weight: 600; cursor: pointer; }
+            .tablah-close { cursor: pointer; color: #94a3b8; font-size: 20px; flex-shrink: 0; }
+            .tablah-btn { background: #2563eb; color: white; border: none; padding: 10px; border-radius: 6px; width: 100%; margin-top: 10px; font-weight: 600; cursor: pointer; font-size: 14px; }
+            .tablah-btn:disabled { opacity: 0.5; cursor: default; }
         </style>
         <div class="tablah-title">
-            <span>${assessment.job_title || 'AI Assessment'}</span>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${result.job_title || 'AI Score'}</span>
+            ${refiningBadge}
             <span class="tablah-close">&times;</span>
         </div>
         <div class="tablah-section">
             <div class="tablah-heading">Company</div>
-            <div class="tablah-body" style="font-weight: 600;">${assessment.job_company || 'Unknown Company'} (${assessment.job_location || 'Unknown Location'})</div>
+            <div class="tablah-body" style="font-weight:600;">${result.job_company || '—'}${result.job_location ? ` · ${result.job_location}` : ''}</div>
         </div>
         <div class="tablah-section">
             <div class="tablah-heading">Fit Score</div>
-            <div class="tablah-body tablah-score" style="font-size: 24px; font-weight: 800;">${assessment.score}%</div>
+            <div style="display:flex;align-items:baseline;gap:8px;">
+                <div id="tablah-score-value" style="font-size:28px;font-weight:800;color:${color};">${result.score}%</div>
+                <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">${result.tier_used || ''}</div>
+            </div>
         </div>
-        <div class="tablah-section">
-            <div class="tablah-heading">Strengths</div>
-            <div class="tablah-body">${assessment.strengths}</div>
-        </div>
-        <div class="tablah-section">
-            <div class="tablah-heading">Gap Analysis</div>
-            <div class="tablah-body">${assessment.weaknesses}</div>
-        </div>
-        <button class="tablah-btn" id="tablah-import-btn">Import to Tablah</button>
+        ${facetBarsHtml(result.facet_scores)}
+        <button class="tablah-btn" id="tablah-import-btn">Save to Pipeline</button>
     `;
 
     overlay.querySelector('.tablah-close').onclick = () => overlay.remove();
     overlay.querySelector('#tablah-import-btn').onclick = async (e) => {
         const btn = e.target;
-        const raw_text = overlay.dataset.rawText || getUniversalRawText(true);
-        
-        if (!raw_text) {
-            btn.innerText = 'Text Not Found';
-            btn.disabled = false;
-            return;
-        }
-
-        btn.innerText = 'Opening Magic Import...';
+        btn.innerText = 'Saving…';
         btn.disabled = true;
-
-        // Trigger the "Magic Import" workflow via the service worker (Draft -> Tab Redirect)
-        chrome.runtime.sendMessage({ 
-            action: "autoImport", 
-            type: "jobs", 
-            text: raw_text 
-        });
-
-        // Close overlay as the user is being redirected
-        setTimeout(() => overlay.remove(), 1000);
+        try {
+            await apiFetch(
+                `${CONFIG.API_BASE}${CONFIG.SCORE_API_URL}/${result.candidate_job_id}/import`,
+                { method: 'POST', headers: { 'Content-Type': 'application/json' } }
+            );
+            btn.innerText = 'Saved to Pipeline ✓';
+        } catch (err) {
+            console.error('Import error:', err);
+            btn.innerText = 'Save Failed — Retry';
+            btn.disabled = false;
+        }
     };
 
     document.body.appendChild(overlay);
@@ -570,7 +640,7 @@ const getProfileRawText = () => {
     return getUniversalRawText(true); // Share the same generic logic
 };
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     if (request.action === "scrape") {
         const linkedInLink = findLinkedInExperienceLink();
         const isAlreadyDetailed = window.location.pathname.includes('/details/experience/');
@@ -599,7 +669,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
     } else if (request.action === "analyzeSelected") {
         const widget = document.getElementById('tablah-widget');
-        showQuickScore(widget, request.useContext || false);
+        showScore(widget, request.useContext || false);
     }
     return true;
 });

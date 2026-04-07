@@ -260,6 +260,36 @@ document.getElementById('tablah-btn-login').addEventListener('click', async () =
     await openAppTab(APP_URL);
 });
 
+document.getElementById('tablah-btn-sweep').addEventListener('click', async () => {
+    const portal = document.getElementById('tablah-sweep-portal').value;
+    const query = document.getElementById('tablah-sweep-query').value.trim();
+    const loc = document.getElementById('tablah-sweep-location').value.trim();
+    
+    if (!query) {
+        showError("Please enter search keywords for the sweep.");
+        return;
+    }
+
+    let targetUrl;
+    if (portal === 'profession_hu') {
+        const queryPart = query ? `keyword=${encodeURIComponent(query)}` : '';
+        const locPart = loc ? `&city=${encodeURIComponent(loc)}` : '';
+        // E.g. https://www.profession.hu/allasok/1,0?keyword=foo&city=bar
+        targetUrl = `https://www.profession.hu/allasok/1,0?${queryPart}${locPart}`;
+    }
+
+    if (targetUrl) {
+        // Save state to storage to trigger content script sweep mode on load
+        await chrome.storage.local.set({ 
+            sweepState: { active: true, portalId: portal, query, location: loc } 
+        });
+        chrome.tabs.create({ url: targetUrl, active: true });
+        window.close();
+    } else {
+        showError("Portal configuration missing URL template system limit.");
+    }
+});
+
 // Init
 (async () => {
     const isAuthenticated = await checkAuth();
