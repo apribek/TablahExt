@@ -601,9 +601,11 @@ const shouldShowWidget = async () => {
     
     // Generic Job Site Detection
     const jobKeywords = ['/jobs', '/career', '/vacancy', '/recruitment', '/apply', '/postings'];
-    const isJobPage = jobKeywords.some(k => path.includes(k)) || 
-                      document.querySelector('meta[property*="job"]') ||
-                      document.querySelector('script[type="application/ld+json"]:contains("JobPosting")');
+    const ldJsonHasJobPosting = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
+                                      .some(s => s.textContent.includes('JobPosting'));
+    const isJobPage = jobKeywords.some(k => path.includes(k)) ||
+                      !!document.querySelector('meta[property*="job"]') ||
+                      ldJsonHasJobPosting;
 
     if (isJobPage) return true;
 
@@ -619,6 +621,7 @@ let widgetTimeout;
 const observer = new MutationObserver(async () => {
     if (location.href !== lastUrl) {
         lastUrl = location.href;
+        chrome.runtime.sendMessage({ action: 'urlChanged', url: location.href });
         clearTimeout(widgetTimeout);
         if (await shouldShowWidget()) {
             widgetTimeout = setTimeout(createWidget, 2000);

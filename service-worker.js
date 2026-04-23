@@ -1,5 +1,10 @@
 importScripts('config.js');
 
+const normalizeUrl = (url) => {
+    try { const u = new URL(url); return u.origin + u.pathname; }
+    catch (_) { return url; }
+};
+
 const getFreshAuthToken = async () => {
     try {
         const cookies = await chrome.cookies.getAll({ domain: CONFIG.COOKIE_DOMAIN }); 
@@ -25,6 +30,11 @@ const registerContextMenus = () => {
             contexts: ["page", "selection"]
         });
         chrome.contextMenus.create({
+            id: "chat-job-tablah",
+            title: "Chat about this job with Tablah",
+            contexts: ["page", "selection"]
+        });
+        chrome.contextMenus.create({
             id: "import-profile-tablah",
             title: "Import Experiences with Tablah",
             contexts: ["page", "selection"]
@@ -43,6 +53,44 @@ chrome.runtime.onStartup.addListener(registerContextMenus);
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     if (info.menuItemId === "score-with-tablah") {
         chrome.tabs.sendMessage(tab.id, { action: "analyzeSelected", useContext: true });
+    } else if (info.menuItemId === "chat-job-tablah") {
+        const tabId = tab.id;
+        const tabUrl = tab.url;
+        const tabTitle = tab.title;
+        // open() must be called synchronously (user gesture context)
+        chrome.sidePanel.open({ tabId });
+        // Everything after this can be async
+        await chrome.storage.local.remove(['current_chat_url']);
+        await chrome.storage.local.set({ active_chat_tab_id: tabId });
+        const normalizedUrl = normalizeUrl(tabUrl);
+        const existing = await chrome.storage.local.get(['chat_sessions']);
+        const sessions = existing.chat_sessions || {};
+        const prev = sessions[normalizedUrl];
+        if (prev && prev.rawJd) {
+            // Good existing session — restore without re-scraping
+            await chrome.storage.local.set({ current_chat_url: normalizedUrl });
+        } else {
+            // No session, or previous scrape returned null — try fresh scrape
+            try {
+                const response = await chrome.tabs.sendMessage(tabId, { action: "scrape", useContext: true });
+                sessions[normalizedUrl] = {
+                    rawJd: response && response.text ? response.text : null,
+                    title: tabTitle,
+                    conversationId: prev ? prev.conversationId : null,
+                    messages: prev ? prev.messages : [],
+                    lastAccessed: Date.now()
+                };
+            } catch (e) {
+                console.warn("TablahExt: scrape failed.", e.message);
+                sessions[normalizedUrl] = {
+                    rawJd: null, title: tabTitle,
+                    conversationId: prev ? prev.conversationId : null,
+                    messages: prev ? prev.messages : [],
+                    lastAccessed: Date.now()
+                };
+            }
+            await chrome.storage.local.set({ chat_sessions: sessions, current_chat_url: normalizedUrl });
+        }
     } else if (info.menuItemId === "import-profile-tablah") {
         const response = await chrome.tabs.sendMessage(tab.id, { action: "scrape", useContext: true });
         if (response && response.text) {
@@ -90,6 +138,50 @@ const saveDraftAndRedirect = async (text, type, _tabId) => {
     }
 };
 
+const handleUrlChanged = async (sender, url) => {
+    const data = await chrome.storage.local.get(['active_chat_tab_id', 'chat_sessions']);
+    if (data.active_chat_tab_id !== sender.tab.id) return;
+
+    const normalized = normalizeUrl(url);
+    const sessions = data.chat_sessions || {};
+
+    if (sessions[normalized] && sessions[normalized].rawJd) {
+        // Good existing session — restore without re-scraping
+        await chrome.storage.local.set({ current_chat_url: normalized });
+        return;
+    }
+
+    // New URL or prior scrape failed — signal panel to show loading, then scrape
+    await chrome.storage.local.set({ current_chat_url: normalized });
+    await new Promise(r => setTimeout(r, 1500)); // Let SPA content settle
+
+    try {
+        const response = await chrome.tabs.sendMessage(sender.tab.id, { action: 'scrape', useContext: true });
+        const fresh = await chrome.storage.local.get(['chat_sessions']);
+        const s = fresh.chat_sessions || {};
+        const prior = s[normalized];
+        s[normalized] = {
+            rawJd: response && response.text ? response.text : null,
+            title: sender.tab.title || '',
+            conversationId: prior ? prior.conversationId : null,
+            messages: prior ? prior.messages : [],
+            lastAccessed: Date.now()
+        };
+        await chrome.storage.local.set({ chat_sessions: s });
+    } catch (e) {
+        const fresh = await chrome.storage.local.get(['chat_sessions']);
+        const s = fresh.chat_sessions || {};
+        const prior = s[normalized];
+        s[normalized] = {
+            rawJd: null, title: '',
+            conversationId: prior ? prior.conversationId : null,
+            messages: prior ? prior.messages : [],
+            lastAccessed: Date.now()
+        };
+        await chrome.storage.local.set({ chat_sessions: s });
+    }
+};
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'apiFetch') {
         (async () => {
@@ -116,6 +208,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             }
         })();
         return true; 
+    } else if (request.action === 'urlChanged') {
+        handleUrlChanged(sender, request.url);
+        // fire-and-forget, no response
     } else if (request.action === 'autoImport') {
         saveDraftAndRedirect(request.text, request.type, sender.tab.id);
         return true;

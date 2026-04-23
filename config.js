@@ -10,7 +10,8 @@ const CONFIG = {
     COOKIE_DOMAIN: "localhost",               // Use domain name in production (no protocol)
     SCORE_API_URL: "/assessments/score",
     JOBS_API_URL: "/jobs",
-    DRAFT_API_URL: "/experiences/draft"
+    DRAFT_API_URL: "/experiences/draft",
+    CHAT_API_URL: "/chat/message"
 };
 
 // Make it globally accessible for other scripts

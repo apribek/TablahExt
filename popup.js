@@ -145,7 +145,7 @@ const assessJob = async () => {
     importBtn.disabled = true;
 
     try {
-        const assessment = await apiFetch(`${API_BASE}${CONFIG.QUICK_API_URL}`, {
+        const assessment = await apiFetch(`${API_BASE}${CONFIG.SCORE_API_URL}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -200,8 +200,9 @@ const importJob = async () => {
             body: JSON.stringify({ raw_text: jobData.text })
         });
 
+        const importUrl = `${APP_URL}/en/dashboard/candidate/jobs?draftId=${draft.draft_id}`;
         await openAppTab(importUrl);
-        
+
         btn.innerText = "View in Tablah";
         btn.classList.replace('btn-outline', 'btn-primary');
         btn.style.backgroundColor = 'var(--success)';
@@ -234,8 +235,9 @@ const importProfile = async () => {
             body: JSON.stringify({ raw_text: result.text })
         });
 
+        const importUrl = `${APP_URL}/en/dashboard/candidate/experiences?draftId=${draft.draft_id}`;
         await openAppTab(importUrl);
-        
+
         btn.innerText = "Imported!";
         btn.style.backgroundColor = 'var(--success)';
         setTimeout(() => {
@@ -260,35 +262,6 @@ document.getElementById('tablah-btn-login').addEventListener('click', async () =
     await openAppTab(APP_URL);
 });
 
-document.getElementById('tablah-btn-sweep').addEventListener('click', async () => {
-    const portal = document.getElementById('tablah-sweep-portal').value;
-    const query = document.getElementById('tablah-sweep-query').value.trim();
-    const loc = document.getElementById('tablah-sweep-location').value.trim();
-    
-    if (!query) {
-        showError("Please enter search keywords for the sweep.");
-        return;
-    }
-
-    let targetUrl;
-    if (portal === 'profession_hu') {
-        const queryPart = query ? `keyword=${encodeURIComponent(query)}` : '';
-        const locPart = loc ? `&city=${encodeURIComponent(loc)}` : '';
-        // E.g. https://www.profession.hu/allasok/1,0?keyword=foo&city=bar
-        targetUrl = `https://www.profession.hu/allasok/1,0?${queryPart}${locPart}`;
-    }
-
-    if (targetUrl) {
-        // Save state to storage to trigger content script sweep mode on load
-        await chrome.storage.local.set({ 
-            sweepState: { active: true, portalId: portal, query, location: loc } 
-        });
-        chrome.tabs.create({ url: targetUrl, active: true });
-        window.close();
-    } else {
-        showError("Portal configuration missing URL template system limit.");
-    }
-});
 
 // Init
 (async () => {

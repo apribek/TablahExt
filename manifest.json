@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TablahExt",
-  "version": "1.0",
+  "version": "1.1",
   "description": "AI Assessment & One-Click Job Import for Tablah",
   "permissions": [
     "activeTab",
@@ -10,7 +10,8 @@
     "storage",
     "scripting",
     "cookies",
-    "contextMenus"
+    "contextMenus",
+    "sidePanel"
   ],
   "host_permissions": [
     "<all_urls>",
@@ -26,6 +27,9 @@
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     }
+  },
+  "side_panel": {
+    "default_path": "chat-panel.html"
   },
   "content_scripts": [
     {
