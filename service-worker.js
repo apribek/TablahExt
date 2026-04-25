@@ -77,6 +77,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
                     rawJd: response && response.text ? response.text : null,
                     title: tabTitle,
                     conversationId: prev ? prev.conversationId : null,
+                    chatToken: prev ? prev.chatToken : crypto.randomUUID(),
                     messages: prev ? prev.messages : [],
                     lastAccessed: Date.now()
                 };
@@ -85,6 +86,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
                 sessions[normalizedUrl] = {
                     rawJd: null, title: tabTitle,
                     conversationId: prev ? prev.conversationId : null,
+                    chatToken: prev ? prev.chatToken : crypto.randomUUID(),
                     messages: prev ? prev.messages : [],
                     lastAccessed: Date.now()
                 };
@@ -99,7 +101,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     } else if (info.menuItemId === "import-job-tablah") {
         const response = await chrome.tabs.sendMessage(tab.id, { action: "scrape", useContext: true });
         if (response && response.text) {
-            await saveDraftAndRedirect(response.text, 'jobs', tab.id);
+            const normalizedUrl = normalizeUrl(tab.url);
+            const stored = await chrome.storage.local.get(['chat_sessions']);
+            const chatToken = (stored.chat_sessions || {})[normalizedUrl]?.chatToken || null;
+            await ingestJob(response.text, tab.url, tab.id, chatToken);
         }
     }
 });
@@ -136,6 +141,40 @@ const saveDraftAndRedirect = async (text, type, _tabId) => {
     } catch (e) {
         console.error("Error in saveDraftAndRedirect:", e);
     }
+};
+
+const ingestJob = async (rawText, pageUrl, _tabId, chatToken = null) => {
+    try {
+        const token = await getFreshAuthToken();
+        const response = await fetch(`${CONFIG.API_BASE}${CONFIG.INGEST_API_URL}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ raw_text: rawText, link: pageUrl, chat_token: chatToken })
+        });
+        if (response.ok) {
+            const data = await response.json();
+            chrome.notifications.create({
+                type: 'basic',
+                iconUrl: 'icons/icon48.png',
+                title: 'Job imported',
+                message: `${data.job_title} at ${data.job_company}`
+            });
+            // Store job_id in the chat session for this URL so chat can link it
+            const normalizedUrl = normalizeUrl(pageUrl);
+            const stored = await chrome.storage.local.get(['chat_sessions']);
+            const sessions = stored.chat_sessions || {};
+            if (sessions[normalizedUrl]) {
+                sessions[normalizedUrl].jobId = data.job_id;
+                await chrome.storage.local.set({ chat_sessions: sessions });
+            }
+            return data;
+        } else {
+            console.error("Ingest failed:", await response.text());
+        }
+    } catch (e) {
+        console.error("Error in ingestJob:", e);
+    }
+    return null;
 };
 
 const handleUrlChanged = async (sender, url) => {

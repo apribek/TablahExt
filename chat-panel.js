@@ -1,5 +1,6 @@
 let conversationId = null;
 let rawJd = null;
+let chatToken = null;
 let isWaiting = false;
 let currentUrl = null;
 
@@ -92,6 +93,7 @@ const sendMessage = async (text) => {
             chat_metadata: { raw_jd: rawJd },
         };
         if (conversationId) body.conversation_id = conversationId;
+        else if (chatToken) body.chat_anchor_id = chatToken;
 
         const data = await apiFetch(`${CONFIG.API_BASE}${CONFIG.CHAT_API_URL}`, {
             method: 'POST',
@@ -184,6 +186,7 @@ const switchToUrl = async (url) => {
     currentUrl = url;
     conversationId = null;
     rawJd = null;
+    chatToken = null;
     isWaiting = false;
     document.getElementById('messages').innerHTML = '';
     document.getElementById('seeds').innerHTML = '';
@@ -209,6 +212,7 @@ const switchToUrl = async (url) => {
     }
 
     conversationId = session.conversationId || null;
+    chatToken = session.chatToken || null;
     activateChat(session);
 
     if (session.messages && session.messages.length > 0) {
