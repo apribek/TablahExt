@@ -1,23 +1,31 @@
 // Tablah Extension Configuration
-// Update these when deploying to production
+// To develop locally: change ENV to "local" — never commit that change
+const ENV = "production";
+
+const _ENVS = {
+    local: {
+        API_BASE: "http://localhost:8000/api",
+        APP_URL: "http://localhost:3000",
+        COOKIE_DOMAIN: "localhost",
+    },
+    production: {
+        API_BASE: "https://cv-aution-backend.onrender.com",
+        APP_URL: "https://tablah.ai",
+        COOKIE_DOMAIN: "tablah.ai",
+    },
+};
+
 const CONFIG = {
-    // API_BASE: "https://api.mytablah.hu/api", // Production
-    API_BASE: "http://localhost:8000/api",    // Local
-
-    // APP_URL: "https://tablah.hu",           // Production
-    APP_URL: "http://localhost:3000",         // Local
-
-    COOKIE_DOMAIN: "localhost",               // Use domain name in production (no protocol)
+    ..._ENVS[ENV],
     SCORE_API_URL: "/assessments/score",
     JOBS_API_URL: "/jobs",
     INGEST_API_URL: "/jobs/ingest",
     DRAFT_API_URL: "/experiences/draft",
-    CHAT_API_URL: "/chat/message"
+    CHAT_API_URL: "/chat/message",
 };
 
-// Make it globally accessible for other scripts
-if (typeof self !== 'undefined') {
+if (typeof self !== "undefined") {
     self.CONFIG = CONFIG;
-} else if (typeof window !== 'undefined') {
+} else if (typeof window !== "undefined") {
     window.CONFIG = CONFIG;
 }

@@ -633,11 +633,10 @@ const observer = new MutationObserver(async () => {
 });
 observer.observe(document, { subtree: true, childList: true });
 
-// Initial run
-// Initial run disabled as per user request
-// shouldShowWidget().then(show => {
-//     if (show) widgetTimeout = setTimeout(createWidget, 2000);
-// });
+// Initial run — show widget on direct page load
+shouldShowWidget().then(show => {
+    if (show) widgetTimeout = setTimeout(createWidget, 2000);
+});
 
 const getProfileRawText = () => {
     return getUniversalRawText(true); // Share the same generic logic
@@ -742,5 +741,5 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 window.addEventListener('popstate', () => {
     const w = document.getElementById('tablah-widget');
     if (w) w.remove();
-    // createWidget();
+    shouldShowWidget().then(show => { if (show) createWidget(); });
 });
