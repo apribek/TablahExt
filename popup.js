@@ -300,7 +300,15 @@ document.getElementById('tablah-btn-login').addEventListener('click', async () =
         showView('auth');
     } else {
         showView('main');
-        
+
+        const { user_features: features = [] } = await chrome.storage.local.get(['user_features']);
+        if (!features.includes('discovery_job_import_magic')) {
+            document.getElementById('tablah-btn-import').style.display = 'none';
+        }
+        if (!features.includes('profile_experience_import_magic')) {
+            document.getElementById('tablah-btn-import-profile').style.display = 'none';
+        }
+
         // Initial "quiet" scrape to prepare jobData
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (tab) {

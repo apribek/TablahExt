@@ -22,8 +22,31 @@ const getFreshAuthToken = async () => {
     return data.clerk_token;
 };
 
+const fetchAndCacheFeatures = async () => {
+    const token = await getFreshAuthToken();
+    if (!token) return null;
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/candidates/me/features`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        await chrome.storage.local.set({ user_features: data.features });
+        return data.features;
+    } catch (_) {
+        return null;
+    }
+};
+
+const applyFeatureVisibility = async () => {
+    const stored = await chrome.storage.local.get(['user_features']);
+    const features = stored.user_features || [];
+    chrome.contextMenus.update('import-job-tablah', { visible: features.includes('discovery_job_import_magic') });
+    chrome.contextMenus.update('import-profile-tablah', { visible: features.includes('profile_experience_import_magic') });
+};
+
 const registerContextMenus = () => {
-    chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.removeAll(async () => {
         chrome.contextMenus.create({
             id: "score-with-tablah",
             title: "Score Job Fit with Tablah",
@@ -37,13 +60,17 @@ const registerContextMenus = () => {
         chrome.contextMenus.create({
             id: "import-profile-tablah",
             title: "Import Experiences with Tablah",
-            contexts: ["page", "selection"]
+            contexts: ["page", "selection"],
+            visible: false
         });
         chrome.contextMenus.create({
             id: "import-job-tablah",
             title: "Import Job with Tablah",
-            contexts: ["page", "selection"]
+            contexts: ["page", "selection"],
+            visible: false
         });
+        await fetchAndCacheFeatures();
+        await applyFeatureVisibility();
     });
 };
 
