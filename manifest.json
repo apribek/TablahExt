@@ -37,9 +37,6 @@
       ],
       "js": [
         "config.js",
-        "portals.js",
-        "search-crawler.js",
-        "detail-crawler.js",
         "content.js"
       ]
     },

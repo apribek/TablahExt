@@ -325,10 +325,3 @@ document.getElementById('tablah-btn-login').addEventListener('click', async () =
         }
     }
 })();
-
-// Allow setting token via console for power users
-window.setToken = (token) => {
-    chrome.storage.local.set({ clerk_token: token }, () => {
-        location.reload();
-    });
-};
