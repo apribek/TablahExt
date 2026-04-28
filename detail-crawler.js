@@ -4,8 +4,6 @@
 chrome.storage.local.get(['activeDetailScrapeURL'], async (data) => {
     // Only engage if this tab is the one actively tracked by the service worker
     if (data.activeDetailScrapeURL && window.location.href.includes(data.activeDetailScrapeURL)) {
-        console.log("Tablah Detail Crawler: Activated on high priority hit. Extracting...");
-        
         // Let the page render
         setTimeout(async () => {
             const rawText = getUniversalRawText ? getUniversalRawText(true) : document.body.innerText;

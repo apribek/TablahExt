@@ -31,12 +31,9 @@ document.addEventListener('click', trackClick, true);
 
 const findLinkedInExperienceLink = () => {
     if (!window.location.host.includes('linkedin.com')) return null;
-    console.log("Tablah: Checking for LinkedIn experience links...");
-    
     // Look for links that contain "/details/experience/"
     const links = Array.from(document.querySelectorAll('a[href*="/details/experience/"]'));
     if (links.length > 0) {
-        console.log("Tablah: Found experience link via href:", links[0].href);
         return links[0];
     }
     
@@ -47,11 +44,9 @@ const findLinkedInExperienceLink = () => {
         // Common variants: "Show all experience", "See all experience", "View all experience"
         if ((text.includes('show all') || text.includes('see all') || text.includes('view all')) && 
             text.includes('experience')) {
-            console.log("Tablah: Found experience link via text:", text);
             return link;
         }
     }
-    console.log("Tablah: No experience link found.");
     return null;
 };
 
@@ -61,7 +56,6 @@ const getUniversalRawText = (useContext = false) => {
     if (selection && selection.rangeCount > 0) {
         const selectedText = selection.toString().trim();
         if (selectedText.length > 100) {
-            console.log("Tablah: Harvesting from user selection");
             return selectedText;
         }
     }
@@ -77,13 +71,11 @@ const getUniversalRawText = (useContext = false) => {
             
             // If the element covers a large visual area and has enough text, it's a good candidate
             if (rect.width > window.innerWidth * 0.4 && textLen > 400 && textLen < 20000) {
-                console.log(`Tablah: Harvesting from ascending container (${el.tagName})`);
                 return el.innerText.trim();
             }
             
             if (['ARTICLE', 'MAIN', 'SECTION'].includes(el.tagName)) {
                  if (textLen > 300) {
-                    console.log(`Tablah: Harvesting from semantic container (${el.tagName})`);
                     return el.innerText.trim();
                  }
             }
@@ -102,7 +94,6 @@ const getUniversalRawText = (useContext = false) => {
         const text = main.innerText.trim();
         // Relaxed threshold for experiences which might be shorter than job posts
         if (text.length > 300) {
-            console.log("Tablah: Harvesting from best-match semantic container");
             return text;
         }
     }
@@ -648,7 +639,6 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
         const isAlreadyDetailed = window.location.pathname.includes('/details/experience/');
 
         if (linkedInLink && !isAlreadyDetailed) {
-            console.log("Tablah: Redirecting to full experience list for better data...");
             chrome.storage.local.set({ tablah_pending_import: 'experiences' }).then(() => {
                 // Short delay to ensure storage is flushed
                 setTimeout(() => {
@@ -716,14 +706,11 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     
     if (data.tablah_pending_import === 'experiences' && isDetailed) {
         await chrome.storage.local.remove('tablah_pending_import');
-        console.log("Tablah: Resuming auto-import on details page...");
-        
         // Wait for LinkedIn to load content (DOM can be slow)
         setTimeout(async () => {
             const text = getUniversalRawText(true);
             if (text && text.length > 300) {
-                console.log("Tablah: Successfully harvested experience text. Sending to Magic Import...");
-                chrome.runtime.sendMessage({ 
+                chrome.runtime.sendMessage({
                     action: "autoImport", 
                     type: "experiences", 
                     text,

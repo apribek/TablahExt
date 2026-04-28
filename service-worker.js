@@ -10,7 +10,6 @@ const getFreshAuthToken = async () => {
         const cookies = await chrome.cookies.getAll({ domain: CONFIG.COOKIE_DOMAIN }); 
         const sessionCookie = cookies.find(c => c.name === '__session' || c.name.startsWith('__client_unv_'));
         if (sessionCookie) {
-             console.log("Service Worker: Found fresh clerk session in cookies.");
              // Store it for quick access by content scripts
              await chrome.storage.local.set({ clerk_token: sessionCookie.value });
              return sessionCookie.value;
