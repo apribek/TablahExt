@@ -9,7 +9,7 @@ const _ENVS = {
         COOKIE_DOMAIN: "localhost",
     },
     production: {
-        API_BASE: "https://cv-aution-backend.onrender.com",
+        API_BASE: "https://cv-aution-backend.onrender.com/api",
         APP_URL: "https://tablah.ai",
         COOKIE_DOMAIN: "tablah.ai",
     },
