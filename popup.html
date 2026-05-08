@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>TablahExt</title>
+    <title>Tablah Quick Menu</title>
     <style>
         :root {
             --primary: #2563eb;
@@ -12,37 +12,36 @@
             --text: #f8fafc;
             --text-muted: #94a3b8;
             --accent: #38bdf8;
-            --success: #22c55e;
-            --warning: #f59e0b;
+            --border: rgba(255,255,255,0.1);
         }
 
         body {
-            width: 760px;
-            max-height: 580px;
+            width: 280px;
             margin: 0;
-            padding: 24px;
+            padding: 8px;
             background-color: var(--bg);
             color: var(--text);
             font-family: 'Inter', -apple-system, sans-serif;
-            overflow-x: hidden;
-            overflow-y: auto;
+            overflow: hidden;
         }
 
-        .tablah-header {
+        .menu-header {
             display: flex;
             align-items: center;
-            gap: 12px;
-            margin-bottom: 24px;
+            gap: 10px;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 6px;
         }
 
-        .tablah-header img {
-            width: 32px;
-            height: 32px;
-            border-radius: 6px;
+        .menu-header img {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
         }
 
-        .tablah-header h1 {
-            font-size: 1.25rem;
+        .menu-header h1 {
+            font-size: 0.9rem;
             margin: 0;
             font-weight: 700;
             background: linear-gradient(to right, var(--primary), var(--accent));
@@ -51,234 +50,173 @@
             -webkit-text-fill-color: transparent;
         }
 
-        .tablah-card {
-            background-color: var(--card-bg);
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: transform 0.2s;
-        }
-
-        .tablah-job-info h2 {
-            font-size: 1.1rem;
-            margin: 0 0 4px 0;
-            color: var(--text);
-        }
-
-        .tablah-job-info p {
-            font-size: 0.9rem;
-            margin: 0;
-            color: var(--text-muted);
-        }
-
-        .tablah-score-container {
+        .menu-item {
             display: flex;
             align-items: center;
-            justify-content: center;
-            flex-direction: column;
-            margin: 20px 0;
-            position: relative;
-        }
-
-        .tablah-score-ring {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            border: 6px solid #334155;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            font-weight: 800;
-            color: var(--accent);
-            position: relative;
-            box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
-        }
-
-        .tablah-score-label {
-            margin-top: 8px;
-            font-size: 0.8rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: var(--text-muted);
-        }
-
-        .tablah-actions {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        button {
-            width: 100%;
-            padding: 12px;
+            gap: 12px;
+            padding: 10px 12px;
             border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: var(--text);
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .menu-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            transform: translateX(4px);
+        }
+
+        .menu-item .icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(37, 99, 235, 0.1);
+            border-radius: 6px;
+            color: var(--accent);
+        }
+
+        .menu-item svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .divider {
+            height: 1px;
+            background: var(--border);
+            margin: 6px 0;
+        }
+
+        #auth-required {
+            padding: 12px;
+            text-align: center;
+            display: none;
+        }
+
+        #auth-required p {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+
+        .btn-sm {
+            width: 100%;
+            padding: 8px;
+            background: var(--primary);
+            color: white;
             border: none;
-            font-size: 0.95rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s;
+        }
+
+        .menu-footer {
+            padding: 8px 12px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Toggle switch for site enablement */
+        .toggle-container {
             display: flex;
             align-items: center;
-            justify-content: center;
             gap: 8px;
         }
 
-        .tablah-btn-primary {
-            background-color: var(--primary);
-            color: white;
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 32px;
+            height: 18px;
         }
 
-        .tablah-btn-primary:hover {
-            background-color: var(--primary-hover);
-            transform: translateY(-1px);
+        .switch input { opacity: 0; width: 0; height: 0; }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #334155;
+            transition: .4s;
+            border-radius: 34px;
         }
 
-        .tablah-btn-outline {
-            background-color: transparent;
-            border: 1px solid var(--primary);
-            color: var(--primary);
-        }
-
-        .tablah-btn-outline:hover {
-            background-color: rgba(37, 99, 235, 0.1);
-        }
-
-        .tablah-assessment-details {
-            margin-top: 20px;
-            display: none;
-        }
-
-        .tablah-detail-section {
-            margin-bottom: 12px;
-        }
-
-        .tablah-detail-section h3 {
-            font-size: 0.85rem;
-            color: var(--accent);
-            margin: 0 0 6px 0;
-            text-transform: uppercase;
-        }
-
-        .tablah-detail-section p {
-            font-size: 0.85rem;
-            margin: 0;
-            line-height: 1.5;
-            color: var(--text-muted);
-        }
-
-        .tablah-loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(15, 23, 42, 0.7);
-            backdrop-filter: blur(8px);
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            transition: opacity 0.3s;
-        }
-
-        .tablah-spinner {
-            width: 48px;
-            height: 48px;
-            border: 4px solid rgba(255, 255, 255, 0.1);
-            border-top: 4px solid var(--accent);
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 12px; width: 12px;
+            left: 3px; bottom: 3px;
+            background-color: white;
+            transition: .4s;
             border-radius: 50%;
-            animation: tablah-spin 1s linear infinite;
-            margin-bottom: 16px;
-            filter: drop-shadow(0 0 10px var(--accent));
         }
 
-        .tablah-loading-text {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: var(--text);
-            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
-        }
+        input:checked + .slider { background-color: var(--primary); }
+        input:checked + .slider:before { transform: translateX(14px); }
 
-        @keyframes tablah-spin {
-            to { transform: rotate(360deg); }
-        }
-
-        #tablah-error {
-            color: #ef4444;
-            font-size: 0.85rem;
-            margin-bottom: 12px;
-            display: none;
-            padding: 8px;
-            background: rgba(239, 68, 68, 0.1);
-            border-radius: 6px;
-        }
-
-        .tablah-auth-required {
-            display: none;
-            text-align: center;
-            padding: 20px;
-        }
     </style>
 </head>
 <body>
-    <div class="tablah-header">
-        <img src="icons/icon48.png" alt="Tablah Logo">
+    <div class="menu-header">
+        <img src="icons/icon48.png" alt="Tablah">
         <h1>Tablah AI</h1>
     </div>
 
-    <div id="tablah-error"></div>
-
-    <div id="tablah-auth-view" class="tablah-auth-required">
-        <p>Please log in to your Tablah account to use the extension.</p>
-        <button class="tablah-btn-primary" id="tablah-btn-login">Open Tablah</button>
+    <div id="auth-required">
+        <p>Login to your Tablah account</p>
+        <button class="btn-sm" id="btn-login">Open Tablah</button>
     </div>
 
-    <div id="tablah-main-view">
-        <div class="tablah-card tablah-job-info" id="tablah-job-info-card">
-            <h2 id="tablah-job-title">Job Title</h2>
-            <p id="tablah-job-company">Company Name</p>
-        </div>
-
-        <div id="tablah-loading-overlay" class="tablah-loading-overlay">
-            <div class="tablah-spinner"></div>
-            <p id="tablah-loading-text" class="tablah-loading-text">Analyzing job fit...</p>
-        </div>
-
-        <div id="tablah-assessment-result" style="display: none;">
-            <div class="tablah-score-container">
-                <div class="tablah-score-ring" id="tablah-score-value">--</div>
-                <div class="tablah-score-label">Fit Score</div>
+    <div id="main-menu">
+        <div class="menu-item" id="item-score">
+            <div class="icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
             </div>
+            <span>Score Job Fit</span>
+        </div>
 
-            <div class="tablah-assessment-details" id="tablah-assessment-details">
-                <div class="tablah-detail-section">
-                    <h3>Strengths</h3>
-                    <p id="tablah-strengths-text"></p>
-                </div>
-                <div class="tablah-detail-section">
-                    <h3>Gap Analysis</h3>
-                    <p id="tablah-weaknesses-text"></p>
-                </div>
+        <div class="menu-item" id="item-chat">
+            <div class="icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
             </div>
+            <span>Chat about this Job</span>
         </div>
 
-        <div class="tablah-card tablah-settings" style="margin-top: 10px; padding: 12px; font-size: 0.85rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span>Show floating widget here</span>
-                <input type="checkbox" id="tablah-site-toggle" style="width: auto;">
+        <div class="divider"></div>
+
+        <div class="menu-item" id="item-import-job">
+            <div class="icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
             </div>
-            <p id="tablah-site-host" style="margin: 4px 0 0 0; font-size: 0.75rem; color: var(--text-muted);"></p>
+            <span>Import Job</span>
         </div>
 
-        <div class="tablah-actions">
-            <button class="tablah-btn-primary" id="tablah-btn-assess">Analyze Fit</button>
-            <button class="tablah-btn-outline" id="tablah-btn-import-profile">Import Experiences</button>
-            <button class="tablah-btn-outline" id="tablah-btn-import">Import Job</button>
+        <div class="menu-item" id="item-import-profile">
+            <div class="icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            </div>
+            <span>Import Profile</span>
         </div>
 
+        <div class="divider"></div>
+
+        <div class="menu-footer">
+            <div class="toggle-container">
+                <label class="switch">
+                    <input type="checkbox" id="site-toggle">
+                    <span class="slider"></span>
+                </label>
+                <span>Enable on site</span>
+            </div>
+            <span id="version" style="opacity: 0.5;">v1.1</span>
+        </div>
     </div>
 
     <script src="config.js"></script>

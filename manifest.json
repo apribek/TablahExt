@@ -28,7 +28,7 @@
     }
   },
   "side_panel": {
-    "default_path": "chat-panel.html"
+    "default_path": "sidepanel.html"
   },
   "content_scripts": [
     {
