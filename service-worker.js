@@ -186,7 +186,8 @@ const saveDraftSilent = async (text, type, tabId) => {
             body: JSON.stringify({ raw_text: text })
         });
         if (response.ok) {
-            chrome.tabs.sendMessage(tabId, { action: "showToast", message: "Profile experiences imported successfully.", type: "success" });
+            const data = await response.json();
+            chrome.tabs.create({ url: `${CONFIG.APP_URL}/en/dashboard/candidate/experiences?draftId=${data.draft_id}` });
         } else {
             chrome.tabs.sendMessage(tabId, { action: "showToast", message: "Profile import failed.", type: "error" });
         }
