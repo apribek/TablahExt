@@ -22,8 +22,8 @@ zip -r "$OUTPUT" \
     service-worker.js \
     popup.html \
     popup.js \
-    chat-panel.html \
-    chat-panel.js \
+    sidepanel.html \
+    sidepanel.js \
     portals.js \
     search-crawler.js \
     detail-crawler.js \
